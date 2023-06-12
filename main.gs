@@ -1,7 +1,7 @@
 /*
  RSSをスプレットシートへ書き込み後、mastodonへtoot
 
- 変数名が良くない
+ 変数名が良くない ファイルの情報、取得した情報、キャッシュ情報がわかりにくい。
 */
 
 function main() {
@@ -20,30 +20,18 @@ function main() {
       return;
     }
     const FEED_INFO_ARRAY = getSheetValues(FEED_URLS_SHEET, 2, 1, 4);
-    let feed_urls_array = [];
-    for (i = 0; i < FEED_INFO_ARRAY.length; i++) {
-      feed_urls_array.push(FEED_INFO_ARRAY[i][0]);
-    }
 
-    Logger.log(FEED_INFO_ARRAY);
-    Logger.log(feed_urls_array);
+    //
+    // feedurlsシートに記載されたURLをまとめて取得する
+    //
+    const FETCHALL_RESPONSE = fetchAll2(FEED_INFO_ARRAY);
 
     // 初回実行記録シートからA2から最終行まで幅1列を取得
     const FIRSTRUN_URLS_SHEET = getSheet(SPREADSHEET, "firstrun");
     const FIRSTRUN_URLS_ARRAY = FIRSTRUN_URLS_SHEET.getLastRow() - 1 == 0 ? [] : getSheetValues(FIRSTRUN_URLS_SHEET, 2, 1, 1);
     Logger.log(FIRSTRUN_URLS_ARRAY);
 
-    //
-    // feedurlsシートに記載されたURLをまとめて取得する
-    //
-    const FETCHALL_RESPONSE = fetchAll(feed_urls_array);
-
-    Logger.log(FETCHALL_RESPONSE.length);
-    Logger.log(feed_urls_array.length);
-    //Logger.log("quit");
-    //return;
-
-    // indexがほしいのでforループで、feedのレスポンスを順番に処理する
+    // feedのレスポンスを順番に処理する
     for (i = 0; i < FEED_INFO_ARRAY.length; i++) {
       const FEED_URL = FEED_INFO_ARRAY[i][0];
       const TRANS_SOURCE = FEED_INFO_ARRAY[i][1];
@@ -80,6 +68,8 @@ function main() {
 
         // RSS情報を記録する配列
         let current_entries_array = [];
+
+        // 条件が揃ったらTootする
         FEED_ENTRIES_ARRAY.forEach(function (entry) {
           const [ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION] = getItem(XML, NS_RSS, entry, FEED_URL);
           if ((CACHE_ENTRYTITLES_ARRAY.length == 0 || !isFound(CACHE_ENTRYTITLES_ARRAY, ENTRY_TITLE)) && !FIRSTRUN) {
@@ -102,7 +92,6 @@ function main() {
           CACHE_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array);
         }
         SpreadsheetApp.flush();
-
         Logger.log("[キャッシュ数] %s [カレント数] %s", CACHE_ENTRYTITLES_ARRAY.length, FEED_ENTRIES_ARRAY.length);
       } else {
         //ステータスが200じゃないときの処理
@@ -137,6 +126,21 @@ function doToot(p) {
   return RESPONSE;
 }
 
+function fetchAll2(feedinfos) {
+  let requests = [];
+
+  for (let i = 0; i < feedinfos.length; i++) {
+    let param = {
+      url: feedinfos[i][0],
+      method: 'get',
+      followRedirects: false,
+      muteHttpExceptions: true
+    };
+    requests.push(param);
+  }
+
+  return UrlFetchApp.fetchAll(requests);
+}
 
 function fetchAll(urls) {
   let requests = [];
@@ -152,15 +156,7 @@ function fetchAll(urls) {
   }
 
   return UrlFetchApp.fetchAll(requests);
-  /*
-    for (let i = 0; i < responses.length; i++) {
-      if (responses[i].getResponseCode() === 200) { //HTTPステータスを取得
-        //ステータス200 OKのときの処理
-      }
-    }*/
 }
-
-
 
 function postToot(status) {
   const payload = {

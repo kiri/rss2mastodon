@@ -1,5 +1,7 @@
 /*
  RSSをスプレットシートへ書き込み後、mastodonへtoot
+
+ 変数名が良くない
 */
 
 function main() {
@@ -17,60 +19,67 @@ function main() {
       Logger.log("feedurlsシートがないので終了します。");
       return;
     }
-    const FEED_URLS_ARRAY = getSheetValues(FEED_URLS_SHEET, 2, 1, 4);
-    Logger.log(FEED_URLS_ARRAY);
+    const FEED_INFO_ARRAY = getSheetValues(FEED_URLS_SHEET, 2, 1, 4);
+    let feed_urls_array = [];
+    for (i = 0; i < FEED_INFO_ARRAY.length; i++) {
+      feed_urls_array.push(FEED_INFO_ARRAY[i][0]);
+    }
+
+    Logger.log(FEED_INFO_ARRAY);
+    Logger.log(feed_urls_array);
 
     // 初回実行記録シートからA2から最終行まで幅1列を取得
     const FIRSTRUN_URLS_SHEET = getSheet(SPREADSHEET, "firstrun");
-    let firstrun_urls_array = FIRSTRUN_URLS_SHEET.getLastRow() - 1 == 0 ? [] : getSheetValues(FIRSTRUN_URLS_SHEET, 2, 1, 1);
-    Logger.log("firstrun_urls" + firstrun_urls_array);
+    const FIRSTRUN_URLS_ARRAY = FIRSTRUN_URLS_SHEET.getLastRow() - 1 == 0 ? [] : getSheetValues(FIRSTRUN_URLS_SHEET, 2, 1, 1);
+    Logger.log(FIRSTRUN_URLS_ARRAY);
 
     //
-    // feedurlsシートに記載されたURLを順番に処理する
+    // feedurlsシートに記載されたURLをまとめて取得する
     //
-    FEED_URLS_ARRAY.forEach(function (feed) {
-      try {
-        // フィード情報を設定、もしURL情報かキャッシュシート名が抜けていたらスキップする
-        const FEED_URL = feed[0];
-        const TRANS_SOURCE = feed[1];
-        const TRANS_TARGET = feed[2];
-        const CACHE_SHEET_NAME = feed[3];
-        Logger.log(CACHE_SHEET_NAME);
-        if (!FEED_URL || !CACHE_SHEET_NAME) { return false; }
+    const FETCHALL_RESPONSE = fetchAll(feed_urls_array);
 
-        // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
-        const FIRSTRUN = !isFound(firstrun_urls_array, FEED_URL);
-        if (FIRSTRUN) {
-          Logger.log("初回実行 " + FEED_URL);
-          // FEED＿URLを配列firstrun_urlsに追加してfirstrun_sheetに書き込む
-          firstrun_urls_array.push(FEED_URL);
-          if (firstrun_urls_array.length > 0) {
-            let array_2d = [];
-            for (i = 0; i < firstrun_urls_array.length; i++) {
-              array_2d[i] = [firstrun_urls_array[i]];
-            }
-            FIRSTRUN_URLS_SHEET.clear();
-            FIRSTRUN_URLS_SHEET.getRange(2, 1, array_2d.length, 1).setValues(array_2d);
-            SpreadsheetApp.flush();
+    Logger.log(FETCHALL_RESPONSE.length);
+    Logger.log(feed_urls_array.length);
+    //Logger.log("quit");
+    //return;
+
+    // indexがほしいのでforループで、feedのレスポンスを順番に処理する
+    for (i = 0; i < FEED_INFO_ARRAY.length; i++) {
+      const FEED_URL = FEED_INFO_ARRAY[i][0];
+      const TRANS_SOURCE = FEED_INFO_ARRAY[i][1];
+      const TRANS_TARGET = FEED_INFO_ARRAY[i][2];
+      const CACHE_SHEET_NAME = FEED_INFO_ARRAY[i][3];
+      const FETCH_RESPONSE = FETCHALL_RESPONSE[i];
+
+      // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
+      const FIRSTRUN = !isFound(FIRSTRUN_URLS_ARRAY, FEED_URL);
+      if (FIRSTRUN) {
+        Logger.log("初回実行 " + FEED_URL);
+        // FEED＿URLを配列firstrun_urlsに追加してfirstrun_sheetに書き込む
+        FIRSTRUN_URLS_ARRAY.push(FEED_URL);
+        if (FIRSTRUN_URLS_ARRAY.length > 0) {
+          let array_2d = [];
+          for (j = 0; j < FIRSTRUN_URLS_ARRAY.length; j++) {
+            array_2d[i] = [FIRSTRUN_URLS_ARRAY[j]];
           }
+          FIRSTRUN_URLS_SHEET.clear();
+          FIRSTRUN_URLS_SHEET.getRange(2, 1, array_2d.length, 1).setValues(array_2d);
+          SpreadsheetApp.flush();
         }
+      }
 
-        // RSSを取得
-        const RESPONSE_FETCH_FEED_URL = UrlFetchApp.fetch(FEED_URL, { "muteHttpExceptions": true });
-        if (RESPONSE_FETCH_FEED_URL.getResponseCode() != 200) { return; }
-
-        const XML = XmlService.parse(RESPONSE_FETCH_FEED_URL.getContentText());
+      if (FETCH_RESPONSE.getResponseCode() == 200) {
+        const XML = XmlService.parse(FETCH_RESPONSE.getContentText());
         const [FEED_TITLE, FEED_ENTRIES_ARRAY] = getFeedEntries(XML, NS_RSS);
         Logger.log("[feed title] %s [feed url] %s", FEED_TITLE, FEED_URL);
 
-        // キャッシュシートの取得、なければ作成する。
-        let cache_sheet = getSheet(SPREADSHEET, CACHE_SHEET_NAME);
-        const CACHE_ENTRYTITLES_ARRAY = cache_sheet.getLastRow() - 1 == 0 ? [] : getSheetValues(cache_sheet, 2, 1, 1);  // タイトルのみ取得（A2(2,1)を起点に最終データ行までの1列分) 
-        const CACHE_ENTRIES_ARRAY = cache_sheet.getLastRow() - 1 == 0 ? [] : getSheetValues(cache_sheet, 2, 1, 4);  // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
+        // キャッシュの取得
+        const CACHE_SHEET = getSheet(SPREADSHEET, CACHE_SHEET_NAME);
+        const CACHE_ENTRYTITLES_ARRAY = CACHE_SHEET.getLastRow() - 1 == 0 ? [] : getSheetValues(CACHE_SHEET, 2, 1, 1);  // タイトルのみ取得（A2(2,1)を起点に最終データ行までの1列分) 
+        const CACHE_ENTRIES_ARRAY = CACHE_SHEET.getLastRow() - 1 == 0 ? [] : getSheetValues(CACHE_SHEET, 2, 1, 4);  // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
 
         // RSS情報を記録する配列
         let current_entries_array = [];
-
         FEED_ENTRIES_ARRAY.forEach(function (entry) {
           const [ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION] = getItem(XML, NS_RSS, entry, FEED_URL);
           if ((CACHE_ENTRYTITLES_ARRAY.length == 0 || !isFound(CACHE_ENTRYTITLES_ARRAY, ENTRY_TITLE)) && !FIRSTRUN) {
@@ -88,17 +97,17 @@ function main() {
         let before1hour = new Date();
         before1hour.setHours(before1hour.getHours() - 1);
         let merged_entries_array = current_entries_array.concat(CACHE_ENTRIES_ARRAY.filter(function (item) { return new Date(item[3]) > before1hour; }));
-        cache_sheet.clear();
+        CACHE_SHEET.clear();
         if (merged_entries_array.length > 0) {
-          cache_sheet.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array);
+          CACHE_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array);
         }
         SpreadsheetApp.flush();
 
         Logger.log("[キャッシュ数] %s [カレント数] %s", CACHE_ENTRYTITLES_ARRAY.length, FEED_ENTRIES_ARRAY.length);
-      } catch (e) {
-        Logger.log("[名前] %s\n[場所] %s(%s行目)\n[メッセージ] %s\n[StackTrace]\n%s", e.name, e.fileName, e.lineNumber, e.message, e.stack);
+      } else {
+        //ステータスが200じゃないときの処理
       }
-    });
+    }
   } catch (e) {
     Logger.log("[名前] %s\n[場所] %s(%s行目)\n[メッセージ] %s\n[StackTrace]\n%s", e.name, e.fileName, e.lineNumber, e.message, e.stack);
   } finally {
@@ -127,6 +136,31 @@ function doToot(p) {
   // 本編のステータスを返す
   return RESPONSE;
 }
+
+
+function fetchAll(urls) {
+  let requests = [];
+
+  for (let i = 0; i < urls.length; i++) {
+    let param = {
+      url: urls[i],
+      method: 'get',
+      followRedirects: false,
+      muteHttpExceptions: true
+    };
+    requests.push(param);
+  }
+
+  return UrlFetchApp.fetchAll(requests);
+  /*
+    for (let i = 0; i < responses.length; i++) {
+      if (responses[i].getResponseCode() === 200) { //HTTPステータスを取得
+        //ステータス200 OKのときの処理
+      }
+    }*/
+}
+
+
 
 function postToot(status) {
   const payload = {

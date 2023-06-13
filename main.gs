@@ -1,9 +1,6 @@
 /*
  RSSをスプレットシートへ書き込み後、mastodonへtoot
-
- 変数名が良くない ファイルの情報、取得した情報、キャッシュ情報がわかりにくい。
 */
-
 function main() {
   const LOCK = LockService.getDocumentLock();
 
@@ -31,15 +28,17 @@ function main() {
 
     // feedのレスポンスを順番に処理する
     for (i = 0; i < FEED_INFO_ARRAY.length; i++) {
-      const FEED_URL = FEED_INFO_ARRAY[i][0];
-      const TRANS_FROM = FEED_INFO_ARRAY[i][1];
-      const TRANS_TO = FEED_INFO_ARRAY[i][2];
-      const FEED_CACHE_SHEET_NAME = FEED_INFO_ARRAY[i][3];
       const FETCH_RESPONSE = FETCH_RESPONSES[i];
 
       if (FETCH_RESPONSE.getResponseCode() == 200) {
         const XML = XmlService.parse(FETCH_RESPONSE.getContentText());
         const [FEED_TITLE, FEED_ENTRIES_ARRAY] = getFeedEntries(XML, NS_RSS);
+
+        // フィード情報
+        const FEED_URL = FEED_INFO_ARRAY[i][0];
+        const TRANS_FROM = FEED_INFO_ARRAY[i][1];
+        const TRANS_TO = FEED_INFO_ARRAY[i][2];
+        const FEED_CACHE_SHEET_NAME = FEED_INFO_ARRAY[i][3];
         Logger.log("[feed title] %s [feed url] %s", FEED_TITLE, FEED_URL);
 
         // キャッシュの取得

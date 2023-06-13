@@ -14,28 +14,28 @@ function main() {
     const NS_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
 
     // 初回実行記録シートからA2から最終行まで幅1列を取得
-    const FIRSTRUN_URLS_SHEET = getSheet(SPREADSHEET, "firstrun");
-    const FIRSTRUN_URLS_ARRAY = FIRSTRUN_URLS_SHEET.getLastRow() - 1 == 0 ? [] : getSheetValues(FIRSTRUN_URLS_SHEET, 2, 1, 1);
-    Logger.log(FIRSTRUN_URLS_ARRAY);
+    const SHEET_FIRSTRUN_URLS = getSheet(SPREADSHEET, "firstrun");
+    const FIRSTRUN_URLS = SHEET_FIRSTRUN_URLS.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FIRSTRUN_URLS, 2, 1, 1);
+    Logger.log(FIRSTRUN_URLS);
 
     // RSSフィードを列挙したfeedurlsシートからA2から最終行まで幅4列を取得
-    const FEED_URLS_SHEET = SPREADSHEET.getSheetByName("feedurls");
-    if (!FEED_URLS_SHEET) {
+    const SHEET_FEED_URLS = SPREADSHEET.getSheetByName("feedurls");
+    if (!SHEET_FEED_URLS) {
       Logger.log("feedurlsシートがないので終了します。");
       return;
     }
-    const FEED_INFO_ARRAY = getSheetValues(FEED_URLS_SHEET, 2, 1, 4);
+    const FEED_INFO_ARRAY = getSheetValues(SHEET_FEED_URLS, 2, 1, 4);
 
     // feedurlsシートに記載されたURLをまとめて取得する
-    const FETCHALL_RESPONSE = fetchAll(FEED_INFO_ARRAY);
+    const FETCH_RESPONSES = fetchAll(FEED_INFO_ARRAY);
 
     // feedのレスポンスを順番に処理する
     for (i = 0; i < FEED_INFO_ARRAY.length; i++) {
       const FEED_URL = FEED_INFO_ARRAY[i][0];
-      const TRANS_SOURCE = FEED_INFO_ARRAY[i][1];
-      const TRANS_TARGET = FEED_INFO_ARRAY[i][2];
-      const CACHE_SHEET_NAME = FEED_INFO_ARRAY[i][3];
-      const FETCH_RESPONSE = FETCHALL_RESPONSE[i];
+      const TRANS_FROM = FEED_INFO_ARRAY[i][1];
+      const TRANS_TO = FEED_INFO_ARRAY[i][2];
+      const FEED_CACHE_SHEET_NAME = FEED_INFO_ARRAY[i][3];
+      const FETCH_RESPONSE = FETCH_RESPONSES[i];
 
       if (FETCH_RESPONSE.getResponseCode() == 200) {
         const XML = XmlService.parse(FETCH_RESPONSE.getContentText());
@@ -43,42 +43,42 @@ function main() {
         Logger.log("[feed title] %s [feed url] %s", FEED_TITLE, FEED_URL);
 
         // キャッシュの取得
-        const CACHE_SHEET = getSheet(SPREADSHEET, CACHE_SHEET_NAME);
-        const CACHE_ENTRYTITLES_ARRAY = CACHE_SHEET.getLastRow() - 1 == 0 ? [] : getSheetValues(CACHE_SHEET, 2, 1, 1);  // タイトルのみ取得（A2(2,1)を起点に最終データ行までの1列分) 
-        const CACHE_ENTRIES_ARRAY = CACHE_SHEET.getLastRow() - 1 == 0 ? [] : getSheetValues(CACHE_SHEET, 2, 1, 4);  // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
+        const SHEET_FEED_CACHE = getSheet(SPREADSHEET, FEED_CACHE_SHEET_NAME);
+        const FEED_CACHE_ENTRYTITLES = SHEET_FEED_CACHE.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FEED_CACHE, 2, 1, 1);  // タイトルのみ取得（A2(2,1)を起点に最終データ行までの1列分) 
+        const FEED_CACHE_ENTRIES = SHEET_FEED_CACHE.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FEED_CACHE, 2, 1, 4);  // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
 
         // 初回実行記録シートにURLが含まれているか
-        const FIRSTRUN = isFirstrun(FEED_URL, FIRSTRUN_URLS_ARRAY, FIRSTRUN_URLS_SHEET);
+        const FIRSTRUN_FLAG = isFirstrun(FEED_URL, FIRSTRUN_URLS, SHEET_FIRSTRUN_URLS);
         // RSS情報を記録する配列
         let current_entries_array = [];
 
         // 条件が揃ったらTootする
         FEED_ENTRIES_ARRAY.forEach(function (entry) {
           const [ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION] = getItem(XML, NS_RSS, entry, FEED_URL);
-          if ((CACHE_ENTRYTITLES_ARRAY.length == 0 || !isFound(CACHE_ENTRYTITLES_ARRAY, ENTRY_TITLE)) && !FIRSTRUN) {
-            const RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "source": TRANS_SOURCE, "target": TRANS_TARGET });
-            if (RESPONSE.getResponseCode() != 200) {
-              Logger.log("[ResponseCode] %s [ContentText] %s", RESPONSE.getResponseCode(), RESPONSE.getContentText());
+          if ((FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) && !FIRSTRUN_FLAG) {
+            const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "source": TRANS_FROM, "target": TRANS_TO });
+            if (TOOT_RESPONSE.getResponseCode() != 200) {
+              Logger.log("[ResponseCode] %s [ContentText] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText());
               return;
             }
           }
           // RSS情報を配列に保存。後でまとめてSHEETに書き込む
           current_entries_array.push([ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION, new Date().toISOString()]);
         });
-        if (FIRSTRUN == true) {
+        if (FIRSTRUN_FLAG == true) {
           // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
-          addFirstrunSheet(FEED_URL, FIRSTRUN_URLS_ARRAY, FIRSTRUN_URLS_SHEET);
+          addFirstrunSheet(FEED_URL, FIRSTRUN_URLS, SHEET_FIRSTRUN_URLS);
         }
         // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
         let thirty_mins_ago = new Date();
         thirty_mins_ago.setMinutes(thirty_mins_ago.getMinutes() - 35);
-        let merged_entries_array = current_entries_array.concat(CACHE_ENTRIES_ARRAY.filter(function (item) { return new Date(item[3]) > thirty_mins_ago; }));
-        CACHE_SHEET.clear();
+        let merged_entries_array = current_entries_array.concat(FEED_CACHE_ENTRIES.filter(function (item) { return new Date(item[3]) > thirty_mins_ago; }));
+        SHEET_FEED_CACHE.clear();
         if (merged_entries_array.length > 0) {
-          CACHE_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array);
+          SHEET_FEED_CACHE.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array);
         }
         SpreadsheetApp.flush();
-        Logger.log("[キャッシュ数] %s [カレント数] %s", CACHE_ENTRYTITLES_ARRAY.length, FEED_ENTRIES_ARRAY.length);
+        Logger.log("[キャッシュ数] %s [カレント数] %s", FEED_CACHE_ENTRYTITLES.length, FEED_ENTRIES_ARRAY.length);
       } else {
         //ステータスが200じゃないときの処理
       }

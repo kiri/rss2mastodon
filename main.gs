@@ -47,9 +47,8 @@ function main() {
         const CACHE_ENTRYTITLES_ARRAY = CACHE_SHEET.getLastRow() - 1 == 0 ? [] : getSheetValues(CACHE_SHEET, 2, 1, 1);  // タイトルのみ取得（A2(2,1)を起点に最終データ行までの1列分) 
         const CACHE_ENTRIES_ARRAY = CACHE_SHEET.getLastRow() - 1 == 0 ? [] : getSheetValues(CACHE_SHEET, 2, 1, 4);  // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
 
-        // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
+        // 初回実行記録シートにURLが含まれているか
         const FIRSTRUN = isFirstrun(FEED_URL, FIRSTRUN_URLS_ARRAY, FIRSTRUN_URLS_SHEET);
-
         // RSS情報を記録する配列
         let current_entries_array = [];
 
@@ -66,7 +65,10 @@ function main() {
           // RSS情報を配列に保存。後でまとめてSHEETに書き込む
           current_entries_array.push([ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION, new Date().toISOString()]);
         });
-
+        if (FIRSTRUN == true) {
+          // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
+          addFirstrunSheet(FEED_URL, FIRSTRUN_URLS_ARRAY, FIRSTRUN_URLS_SHEET);
+        }
         // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
         let thirty_mins_ago = new Date();
         thirty_mins_ago.setMinutes(thirty_mins_ago.getMinutes() - 35);
@@ -215,9 +217,17 @@ function getSheetValues(ss, row, col, width) {
 }
 
 function isFirstrun(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
-  // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
   if (!isFound(firstrun_urls_array, feed_url)) {
     Logger.log("初回実行 " + feed_url);
+    return true;
+  }
+  return false;
+}
+
+function addFirstrunSheet(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
+  // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
+  if (!isFound(firstrun_urls_array, feed_url)) {
+    Logger.log("初回実行シートにFEEDを追加 " + feed_url);
     // FEED＿URLを配列firstrun_urlsに追加してfirstrun_sheetに書き込む
     firstrun_urls_array.push(feed_url);
     if (firstrun_urls_array.length > 0) {
@@ -229,9 +239,8 @@ function isFirstrun(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
       firstrun_urls_sheet.getRange(2, 1, array_2d.length, 1).setValues(array_2d);
       SpreadsheetApp.flush();
     }
-    return true;
   }
-  return false;
+  return;
 }
 
 // スクリプトプロパティ取得

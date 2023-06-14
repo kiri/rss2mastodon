@@ -57,7 +57,8 @@ function main() {
           if ((FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) && !FIRSTRUN_FLAG) {
             const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "source": TRANS_FROM, "target": TRANS_TO });
             if (TOOT_RESPONSE.getResponseCode() != 200) {
-              Logger.log("[ResponseCode] %s [ContentText] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText());
+              Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
+              if (TOOT_RESPONSE.getResponseCode() == 429) { throw new Error("レスポンスコード429です。"); }
               return;
             }
           }
@@ -69,12 +70,12 @@ function main() {
           addFirstrunSheet(FEED_URL, FIRSTRUN_URLS, SHEET_FIRSTRUN_URLS);
         }
         // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
-        let thirty_mins_ago = new Date();
-        thirty_mins_ago.setMinutes(thirty_mins_ago.getMinutes() - 35);
-        let merged_entries_array = current_entries_array.concat(FEED_CACHE_ENTRIES.filter(function (item) { return new Date(item[3]) > thirty_mins_ago; }));
+        let some_mins_ago = new Date();
+        some_mins_ago.setMinutes(some_mins_ago.getMinutes() - 720);
+        let merged_entries_array = current_entries_array.concat(FEED_CACHE_ENTRIES.filter(function (item) { return new Date(item[3]) > some_mins_ago; }));
         SHEET_FEED_CACHE.clear();
         if (merged_entries_array.length > 0) {
-          SHEET_FEED_CACHE.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array);
+          SHEET_FEED_CACHE.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array).removeDuplicates([1]);
         }
         SpreadsheetApp.flush();
         Logger.log("[キャッシュ数] %s [カレント数] %s", FEED_CACHE_ENTRYTITLES.length, FEED_ENTRIES_ARRAY.length);
@@ -111,22 +112,6 @@ function doToot(p) {
   return RESPONSE;
 }
 
-function fetchAll(feedinfos) {
-  let requests = [];
-
-  for (let i = 0; i < feedinfos.length; i++) {
-    let param = {
-      url: feedinfos[i][0],
-      method: 'get',
-      followRedirects: false,
-      muteHttpExceptions: true
-    };
-    requests.push(param);
-  }
-
-  return UrlFetchApp.fetchAll(requests);
-}
-
 function postToot(status) {
   const payload = {
     "status": status,
@@ -141,11 +126,27 @@ function postToot(status) {
   };
   try {
     const RESPONSE_FETCH_MASTODON_URL = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), options);
-    Logger.log(RESPONSE_FETCH_MASTODON_URL);
+    //Logger.log(RESPONSE_FETCH_MASTODON_URL);
     return RESPONSE_FETCH_MASTODON_URL;
   } catch (e) {
     Logger.log("[名前] %s\n[場所] %s(%s行目)\n[メッセージ] %s\n[StackTrace]\n%s", e.name, e.fileName, e.lineNumber, e.message, e.stack);
   }
+}
+
+function fetchAll(feedinfos) {
+  let requests = [];
+
+  for (let i = 0; i < feedinfos.length; i++) {
+    let param = {
+      url: feedinfos[i][0],
+      method: 'get',
+      followRedirects: false,
+      muteHttpExceptions: true
+    };
+    requests.push(param);
+  }
+
+  return UrlFetchApp.fetchAll(requests);
 }
 
 function getFeedEntries(xml, namespace) {
@@ -232,7 +233,7 @@ function addFirstrunSheet(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
     if (firstrun_urls_array.length > 0) {
       let array_2d = [];
       for (j = 0; j < firstrun_urls_array.length; j++) {
-        array_2d[i] = [firstrun_urls_array[j]];
+        array_2d[j] = [firstrun_urls_array[j]];
       }
       firstrun_urls_sheet.clear();
       firstrun_urls_sheet.getRange(2, 1, array_2d.length, 1).setValues(array_2d);

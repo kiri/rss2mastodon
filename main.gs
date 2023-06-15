@@ -65,6 +65,7 @@ function main() {
           if ((FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) && !FIRSTRUN_FLAG) {
             const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "source": TRANS_FROM, "target": TRANS_TO });
 
+            toot_count++;
             Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
             const TOOT_RESPONSE_HEADERS = TOOT_RESPONSE.getHeaders();
             if (TOOT_RESPONSE.getResponseCode() != 200) {
@@ -74,7 +75,7 @@ function main() {
               }
               return;
             }
-            toot_count++;
+
             //今回のレートリミット
             const TRIGGER_INTERVAL = 10;// mins
             const RATELIMIT_REMAINING = TOOT_RESPONSE_HEADERS['x-ratelimit-remaining'];

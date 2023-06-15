@@ -9,6 +9,8 @@ function main() {
 
     const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
     const NS_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
+    // Add one line to use BetterLog https://github.com/peterherrmann/BetterLog
+    Logger = BetterLog.useSpreadsheet(getScriptProperty('spreadsheet_id'));
 
     // 初回実行記録シートからA2から最終行まで幅1列を取得
     const SHEET_FIRSTRUN_URLS = getSheet(SPREADSHEET, "firstrun");
@@ -82,7 +84,7 @@ function main() {
             const RATELIMIT_LIMIT = TOOT_RESPONSE_HEADERS['x-ratelimit-limit'];
             const RATELIMIT_RESET_DATE = TOOT_RESPONSE_HEADERS['x-ratelimit-reset'];
             const CURRENT_RATELIMIT = RATELIMIT_REMAINING / ((new Date(RATELIMIT_RESET_DATE) - new Date()) / (TRIGGER_INTERVAL * 60 * 1000));
-            Logger.log("レートリミット残数 %s レートリミット %s レートリミット残 %s %, リセット予定時刻 %s", RATELIMIT_REMAINING, RATELIMIT_LIMIT, 100 * RATELIMIT_REMAINING / RATELIMIT_LIMIT, new Date(RATELIMIT_RESET_DATE));
+            Logger.log("現在レートリミット %s レートリミット残数 %s レートリミット %s レートリミット残 %s %, リセット予定時刻 %s", CURRENT_RATELIMIT, RATELIMIT_REMAINING, RATELIMIT_LIMIT, 100 * RATELIMIT_REMAINING / RATELIMIT_LIMIT, new Date(RATELIMIT_RESET_DATE));
             if (toot_count > CURRENT_RATELIMIT) { // レートリミットを超えたら終了フラグを立てる 
               Logger.log("投稿数 %s が今回分リミット %s 回を超えました。", toot_count, CURRENT_RATELIMIT);
               ratelimit_break = true;

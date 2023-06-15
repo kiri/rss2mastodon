@@ -86,12 +86,6 @@ function main() {
               Logger.log("投稿数 %s が今回分リミット %s 回を超えました。", toot_count, CURRENT_RATELIMIT);
               ratelimit_break = true;
             }
-
-            /*if (toot_count > 16) { // 300/3/6=16回Tootしたら、レートリミット情報を出力し、終了フラグを立てる 
-              Logger.log("投稿数 %s が16回を超えたため処理を終了します。", toot_count);
-              Logger.log("レートリミット残 %s %, リセット予定時刻 %s", 100 * TOOT_RESPONSE_HEADERS['x-ratelimit-remaining'] / TOOT_RESPONSE_HEADERS['x-ratelimit-limit'], new Date(TOOT_RESPONSE_HEADERS['x-ratelimit-reset']));
-              ratelimit_break = true;
-            }*/
           }
           // RSS情報を配列に保存。後でまとめてSHEETに書き込む
           current_entries_array.push([ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION, new Date().toISOString()]);

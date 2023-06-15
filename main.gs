@@ -26,8 +26,14 @@ function main() {
     // feedurlsシートに記載されたURLをまとめて取得する
     const FETCH_RESPONSES = fetchAll(FEED_INFO_ARRAY);
 
+    // Tootした数を数える
+    let toot_count = 0;
+    let ratelimit_break = false;
+
     // feedのレスポンスを順番に処理する
     for (i = 0; i < FEED_INFO_ARRAY.length; i++) {
+      if (ratelimit_break == true) { break; }
+
       const FETCH_RESPONSE = FETCH_RESPONSES[i];
 
       if (FETCH_RESPONSE.getResponseCode() == 200) {
@@ -53,14 +59,39 @@ function main() {
 
         // 条件が揃ったらTootする
         FEED_ENTRIES_ARRAY.forEach(function (entry) {
+          if (ratelimit_break == true) { return; }
+
           const [ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION] = getItem(XML, NS_RSS, entry, FEED_URL);
           if ((FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) && !FIRSTRUN_FLAG) {
             const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "source": TRANS_FROM, "target": TRANS_TO });
+
+            Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
+            const TOOT_RESPONSE_HEADERS = TOOT_RESPONSE.getHeaders();
             if (TOOT_RESPONSE.getResponseCode() != 200) {
-              Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
-              if (TOOT_RESPONSE.getResponseCode() == 429) { throw new Error("レスポンスコード429です。"); }
+              if (TOOT_RESPONSE.getResponseCode() == 429) {
+                Logger.log("レートリミット残 %s %, リセット予定時刻 %s", 100 * TOOT_RESPONSE_HEADERS['x-ratelimit-remaining'] / TOOT_RESPONSE_HEADERS['x-ratelimit-limit'], new Date(TOOT_RESPONSE_HEADERS['x-ratelimit-reset']));
+                throw new Error("HTTP 429");
+              }
               return;
             }
+            toot_count++;
+            //今回のレートリミット
+            const TRIGGER_INTERVAL = 10;// mins
+            const RATELIMIT_REMAINING = TOOT_RESPONSE_HEADERS['x-ratelimit-remaining'];
+            const RATELIMIT_LIMIT = TOOT_RESPONSE_HEADERS['x-ratelimit-limit'];
+            const RATELIMIT_RESET_DATE = TOOT_RESPONSE_HEADERS['x-ratelimit-reset'];
+            const CURRENT_RATELIMIT = RATELIMIT_REMAINING / ((new Date(RATELIMIT_RESET_DATE) - new Date()) / (TRIGGER_INTERVAL * 60 * 1000));
+            Logger.log("レートリミット残数 %s レートリミット %s レートリミット残 %s %, リセット予定時刻 %s", RATELIMIT_REMAINING, RATELIMIT_LIMIT, 100 * RATELIMIT_REMAINING / RATELIMIT_LIMIT, new Date(RATELIMIT_RESET_DATE));
+            if (toot_count > CURRENT_RATELIMIT) { // レートリミットを超えたら終了フラグを立てる 
+              Logger.log("投稿数 %s が今回分リミット %s 回を超えました。", toot_count, CURRENT_RATELIMIT);
+              ratelimit_break = true;
+            }
+
+            /*if (toot_count > 16) { // 300/3/6=16回Tootしたら、レートリミット情報を出力し、終了フラグを立てる 
+              Logger.log("投稿数 %s が16回を超えたため処理を終了します。", toot_count);
+              Logger.log("レートリミット残 %s %, リセット予定時刻 %s", 100 * TOOT_RESPONSE_HEADERS['x-ratelimit-remaining'] / TOOT_RESPONSE_HEADERS['x-ratelimit-limit'], new Date(TOOT_RESPONSE_HEADERS['x-ratelimit-reset']));
+              ratelimit_break = true;
+            }*/
           }
           // RSS情報を配列に保存。後でまとめてSHEETに書き込む
           current_entries_array.push([ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION, new Date().toISOString()]);
@@ -83,8 +114,13 @@ function main() {
         //ステータスが200じゃないときの処理
       }
     }
+    Logger.log("終了");
   } catch (e) {
-    Logger.log("[名前] %s\n[場所] %s(%s行目)\n[メッセージ] %s\n[StackTrace]\n%s", e.name, e.fileName, e.lineNumber, e.message, e.stack);
+    if (e.message === "HTTP 429") {
+      Logger.log("[名前] %s [場所] %s(%s行目) [メッセージ] %s", e.name, e.fileName, e.lineNumber, e.message);
+    } else {
+      Logger.log("[名前] %s\n[場所] %s(%s行目)\n[メッセージ] %s\n[StackTrace]\n%s", e.name, e.fileName, e.lineNumber, e.message, e.stack);
+    }
   } finally {
     LOCK.releaseLock();
   }

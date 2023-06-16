@@ -66,7 +66,9 @@ function main() {
           // 条件が揃ったらTootする
           if ((FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) && !FIRSTRUN_FLAG) {
             const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "source": TRANS_FROM, "target": TRANS_TO });
+            Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
 
+            // レスポンスヘッダからレートリミットを得る
             const TOOT_RESPONSE_HEADERS = TOOT_RESPONSE.getHeaders();
             const RATELIMIT_REMAINING = Number(TOOT_RESPONSE_HEADERS['x-ratelimit-remaining']);
             const RATELIMIT_LIMIT = Number(TOOT_RESPONSE_HEADERS['x-ratelimit-limit']);
@@ -75,15 +77,14 @@ function main() {
             if (initial_ratelimit_remaining == -1) { initial_ratelimit_remaining = RATELIMIT_REMAINING + 1; }// レートリミット残初期値
             const TOOT_COUNT = initial_ratelimit_remaining - RATELIMIT_REMAINING;
 
-            // レートリミット
+            // 今回適用するレートリミットを算出
             const TRIGGER_INTERVAL = 10;// mins
             const RESET_WAIT_TIME = new Date(RATELIMIT_RESET_DATE) - new Date();
             const CURRENT_RATELIMIT = Math.round(RATELIMIT_REMAINING * (TRIGGER_INTERVAL * 60 * 1000 > RESET_WAIT_TIME ? 1 : TRIGGER_INTERVAL * 60 * 1000 / RESET_WAIT_TIME));
             Logger.log("現在レートリミット残 %s %, TOOT数 %s, 現在レートリミット残数 %s, レートリミット残 %s %, レートリミット残数 %s, リセット予定時刻 %s, レートリミット %s", Math.ceil((CURRENT_RATELIMIT - TOOT_COUNT) / CURRENT_RATELIMIT * 100), TOOT_COUNT, CURRENT_RATELIMIT, RATELIMIT_REMAINING_PERCENT, RATELIMIT_REMAINING, new Date(RATELIMIT_RESET_DATE).toLocaleString('ja-JP'), RATELIMIT_LIMIT);
             if (TOOT_COUNT > CURRENT_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
 
-            // レスポンスコード
-            Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
+            // レスポンスコードに応じて処理
             if (TOOT_RESPONSE.getResponseCode() == 429) {
               throw new Error("HTTP 429");
             } else if (TOOT_RESPONSE.getResponseCode() != 200) {

@@ -16,7 +16,7 @@ function main() {
     const FIRSTRUN_URLS = SHEET_FIRSTRUN_URLS.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FIRSTRUN_URLS, 2, 1, 1);
     //Logger.log(FIRSTRUN_URLS);
 
-    // RSSフィードを列挙したfeedurlsシート [feed url][翻訳from][翻訳to][キャッシュシート名]
+    // RSSフィードを列挙したfeedurlsシート [feed url][キャッシュシート名][翻訳]
     const SHEET_FEED_URLS = SPREADSHEET.getSheetByName("feedurls");
     if (!SHEET_FEED_URLS) {
       Logger.log("feedurlsシートが見つかりません。終了します。");
@@ -24,7 +24,7 @@ function main() {
     }
 
     // feedurlsシートに記載されたURLをまとめて取得する
-    const FEED_INFO_ARRAY = getSheetValues(SHEET_FEED_URLS, 2, 1, 4);
+    const FEED_INFO_ARRAY = getSheetValues(SHEET_FEED_URLS, 2, 1, 3);
     const FETCH_RESPONSES = fetchAll(FEED_INFO_ARRAY);
 
     // Tootした数の記録用
@@ -43,9 +43,8 @@ function main() {
 
         // フィード情報
         const FEED_URL = FEED_INFO_ARRAY[i][0];
-        const TRANS_FROM = FEED_INFO_ARRAY[i][1];
+        const FEED_CACHE_SHEET_NAME = FEED_INFO_ARRAY[i][1] ? FEED_INFO_ARRAY[i][1] : "Default";
         const TRANS_TO = FEED_INFO_ARRAY[i][2];
-        const FEED_CACHE_SHEET_NAME = FEED_INFO_ARRAY[i][3] ? FEED_INFO_ARRAY[i][3] : "Default";
         //Logger.log("[feed title] %s [feed url] %s", FEED_TITLE, FEED_URL);
 
         // キャッシュの取得
@@ -64,7 +63,7 @@ function main() {
           const [ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION] = getItem(XML, NS_RSS, entry, FEED_URL);
           // 条件が揃ったらTootする
           if ((FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) && !FIRSTRUN_FLAG) {
-            const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "source": TRANS_FROM, "target": TRANS_TO });
+            const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL,  "target": TRANS_TO });
             //Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
 
             // レスポンスヘッダからレートリミットを得る
@@ -80,7 +79,7 @@ function main() {
             const TRIGGER_INTERVAL = 10;// mins
             const RESET_WAIT_TIME = new Date(RATELIMIT_RESET_DATE) - new Date();
             const CURRENT_RATELIMIT = Math.round(RATELIMIT_REMAINING * (TRIGGER_INTERVAL * 60 * 1000 > RESET_WAIT_TIME ? 1 : TRIGGER_INTERVAL * 60 * 1000 / RESET_WAIT_TIME));
-            Logger.log("%s, %s, 現在RL残 %s %, TOOT数 %s, 現在RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((CURRENT_RATELIMIT - TOOT_COUNT) / CURRENT_RATELIMIT * 100), TOOT_COUNT, CURRENT_RATELIMIT, RATELIMIT_REMAINING_PERCENT, RATELIMIT_REMAINING, new Date(RATELIMIT_RESET_DATE).toLocaleString('ja-JP'), RATELIMIT_LIMIT);
+            Logger.log("%s, %s, 今回RL残 %s %, TOOT数 %s, 今回RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((CURRENT_RATELIMIT - TOOT_COUNT) / CURRENT_RATELIMIT * 100), TOOT_COUNT, CURRENT_RATELIMIT, RATELIMIT_REMAINING_PERCENT, RATELIMIT_REMAINING, new Date(RATELIMIT_RESET_DATE).toLocaleString('ja-JP'), RATELIMIT_LIMIT);
             if (TOOT_COUNT > CURRENT_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
 
             // レスポンスコードに応じて処理
@@ -133,13 +132,12 @@ function doToot(p) {
   const RESPONSE = postToot(m);
 
   // 翻訳版のToot
-  if (RESPONSE.getResponseCode() == 200 && p.source && p.target) {
+  if (RESPONSE.getResponseCode() == 200 && p.target) {
     doToot({
-      "feedtitle": LanguageApp.translate(p.feedtitle, p.source, p.target),
-      "entrytitle": "【翻訳】\n" + LanguageApp.translate(p.entrytitle, p.source, p.target),
-      "entrycontent": LanguageApp.translate(p.entrycontent, p.source, p.target),
+      "feedtitle": LanguageApp.translate(p.feedtitle, "", p.target),
+      "entrytitle": "【翻訳】\n" + LanguageApp.translate(p.entrytitle, "", p.target),
+      "entrycontent": LanguageApp.translate(p.entrycontent, "", p.target),
       "entryurl": RESPONSE.url,
-      "source": null,
       "target": null
     });
   }

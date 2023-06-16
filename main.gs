@@ -1,5 +1,5 @@
 /*
- RSSをスプレットシートへ書き込み後、mastodonへtoot
+ RSSをmastodonへtoot
 */
 function main() {
   const LOCK = LockService.getDocumentLock();
@@ -28,8 +28,9 @@ function main() {
     // feedurlsシートに記載されたURLをまとめて取得する
     const FETCH_RESPONSES = fetchAll(FEED_INFO_ARRAY);
 
-    // Tootした数を数える
-    let toot_count = 0;
+    // Tootした数の記録用
+    let initial_ratelimit_remaining = -1;
+    // レートリミット超えで中断・スキップ判定用
     let ratelimit_break = false;
 
     // feedのレスポンスを順番に処理する
@@ -37,7 +38,6 @@ function main() {
       if (ratelimit_break == true) { break; }
 
       const FETCH_RESPONSE = FETCH_RESPONSES[i];
-
       if (FETCH_RESPONSE.getResponseCode() == 200) {
         const XML = XmlService.parse(FETCH_RESPONSE.getContentText());
         const [FEED_TITLE, FEED_ENTRIES_ARRAY] = getFeedEntries(XML, NS_RSS);
@@ -51,8 +51,8 @@ function main() {
 
         // キャッシュの取得
         const SHEET_FEED_CACHE = getSheet(SPREADSHEET, FEED_CACHE_SHEET_NAME);
-        const FEED_CACHE_ENTRYTITLES = SHEET_FEED_CACHE.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FEED_CACHE, 2, 1, 1);  // タイトルのみ取得（A2(2,1)を起点に最終データ行までの1列分) 
-        const FEED_CACHE_ENTRIES = SHEET_FEED_CACHE.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FEED_CACHE, 2, 1, 4);  // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
+        const FEED_CACHE_ENTRYTITLES = SHEET_FEED_CACHE.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FEED_CACHE, 2, 1, 1); // タイトルのみ取得（A2(2,1)を起点に最終データ行までの1列分) 
+        const FEED_CACHE_ENTRIES = SHEET_FEED_CACHE.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FEED_CACHE, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
 
         // 初回実行記録シートにURLが含まれているか
         const FIRSTRUN_FLAG = isFirstrun(FEED_URL, FIRSTRUN_URLS, SHEET_FIRSTRUN_URLS);
@@ -67,27 +67,27 @@ function main() {
           if ((FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) && !FIRSTRUN_FLAG) {
             const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "source": TRANS_FROM, "target": TRANS_TO });
 
-            toot_count++;
-            Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
             const TOOT_RESPONSE_HEADERS = TOOT_RESPONSE.getHeaders();
-            if (TOOT_RESPONSE.getResponseCode() != 200) {
-              if (TOOT_RESPONSE.getResponseCode() == 429) {
-                Logger.log("レートリミット残 %s %, リセット予定時刻 %s", 100 * TOOT_RESPONSE_HEADERS['x-ratelimit-remaining'] / TOOT_RESPONSE_HEADERS['x-ratelimit-limit'], new Date(TOOT_RESPONSE_HEADERS['x-ratelimit-reset']));
-                throw new Error("HTTP 429");
-              }
-              return;
-            }
-
-            //今回のレートリミット
-            const TRIGGER_INTERVAL = 10;// mins
-            const RATELIMIT_REMAINING = TOOT_RESPONSE_HEADERS['x-ratelimit-remaining'];
-            const RATELIMIT_LIMIT = TOOT_RESPONSE_HEADERS['x-ratelimit-limit'];
+            const RATELIMIT_REMAINING = Number(TOOT_RESPONSE_HEADERS['x-ratelimit-remaining']);
+            const RATELIMIT_LIMIT = Number(TOOT_RESPONSE_HEADERS['x-ratelimit-limit']);
             const RATELIMIT_RESET_DATE = TOOT_RESPONSE_HEADERS['x-ratelimit-reset'];
-            const CURRENT_RATELIMIT = RATELIMIT_REMAINING / ((new Date(RATELIMIT_RESET_DATE) - new Date()) / (TRIGGER_INTERVAL * 60 * 1000));
-            Logger.log("現在レートリミット %s レートリミット残数 %s レートリミット %s レートリミット残 %s %, リセット予定時刻 %s", CURRENT_RATELIMIT, RATELIMIT_REMAINING, RATELIMIT_LIMIT, 100 * RATELIMIT_REMAINING / RATELIMIT_LIMIT, new Date(RATELIMIT_RESET_DATE));
-            if (toot_count > CURRENT_RATELIMIT) { // レートリミットを超えたら終了フラグを立てる 
-              Logger.log("投稿数 %s が今回分リミット %s 回を超えました。", toot_count, CURRENT_RATELIMIT);
-              ratelimit_break = true;
+            const RATELIMIT_REMAINING_PERCENT = Math.round(100 * RATELIMIT_REMAINING / RATELIMIT_LIMIT);
+            if (initial_ratelimit_remaining == -1) { initial_ratelimit_remaining = RATELIMIT_REMAINING + 1; }// レートリミット残初期値
+            const TOOT_COUNT = initial_ratelimit_remaining - RATELIMIT_REMAINING;
+
+            // レートリミット
+            const TRIGGER_INTERVAL = 10;// mins
+            const CURRENT_RATELIMIT = Math.round(RATELIMIT_REMAINING / ((new Date(RATELIMIT_RESET_DATE) - new Date()) / (TRIGGER_INTERVAL * 60 * 1000)));
+            Logger.log("現在レートリミット残 %s %, TOOT数 %s, 現在レートリミット残数 %s, レートリミット残 %s %, レートリミット残数 %s, リセット予定時刻 %s, レートリミット %s", Math.ceil((CURRENT_RATELIMIT - TOOT_COUNT) / CURRENT_RATELIMIT * 100), TOOT_COUNT, CURRENT_RATELIMIT, RATELIMIT_REMAINING_PERCENT, RATELIMIT_REMAINING, new Date(RATELIMIT_RESET_DATE).toLocaleString('ja-JP'), RATELIMIT_LIMIT);
+            if (TOOT_COUNT > CURRENT_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
+
+            // レスポンスコード
+            Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
+            if (TOOT_RESPONSE.getResponseCode() == 429) {
+              throw new Error("HTTP 429");
+            } else if (TOOT_RESPONSE.getResponseCode() != 200) {
+              Utilities.sleep(5 * 1000);
+              return;
             }
           }
           // RSS情報を配列に保存。後でまとめてSHEETに書き込む
@@ -97,6 +97,7 @@ function main() {
           // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
           addFirstrunSheet(FEED_URL, FIRSTRUN_URLS, SHEET_FIRSTRUN_URLS);
         }
+
         // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
         let some_mins_ago = new Date();
         some_mins_ago.setMinutes(some_mins_ago.getMinutes() - 720);

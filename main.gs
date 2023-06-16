@@ -46,7 +46,7 @@ function main() {
         const FEED_URL = FEED_INFO_ARRAY[i][0];
         const TRANS_FROM = FEED_INFO_ARRAY[i][1];
         const TRANS_TO = FEED_INFO_ARRAY[i][2];
-        const FEED_CACHE_SHEET_NAME = FEED_INFO_ARRAY[i][3];
+        const FEED_CACHE_SHEET_NAME = FEED_INFO_ARRAY[i][3] ? FEED_INFO_ARRAY[i][3] : "Default";
         Logger.log("[feed title] %s [feed url] %s", FEED_TITLE, FEED_URL);
 
         // キャッシュの取得

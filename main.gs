@@ -25,6 +25,7 @@ function main() {
 
     // feedurlsシートに記載されたURLをまとめて取得する
     const FEED_INFO_ARRAY = getSheetValues(SHEET_FEED_URLS, 2, 1, 3);
+    //Logger.log(FEED_INFO_ARRAY);
     const FETCH_RESPONSES = fetchAll(FEED_INFO_ARRAY);
 
     // Tootした数の記録用
@@ -63,7 +64,7 @@ function main() {
           const [ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION] = getItem(XML, NS_RSS, entry, FEED_URL);
           // 条件が揃ったらTootする
           if ((FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) && !FIRSTRUN_FLAG) {
-            const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL,  "target": TRANS_TO });
+            const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "target": TRANS_TO });
             //Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
 
             // レスポンスヘッダからレートリミットを得る
@@ -137,7 +138,7 @@ function doToot(p) {
       "feedtitle": LanguageApp.translate(p.feedtitle, "", p.target),
       "entrytitle": "【翻訳】\n" + LanguageApp.translate(p.entrytitle, "", p.target),
       "entrycontent": LanguageApp.translate(p.entrycontent, "", p.target),
-      "entryurl": RESPONSE.url,
+      "entryurl": JSON.parse(RESPONSE.getContentText())['uri'],
       "target": null
     });
   }

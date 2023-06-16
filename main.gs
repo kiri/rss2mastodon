@@ -138,7 +138,7 @@ function doToot(p) {
       "feedtitle": LanguageApp.translate(p.feedtitle, "", p.target),
       "entrytitle": "【翻訳】\n" + LanguageApp.translate(p.entrytitle, "", p.target),
       "entrycontent": LanguageApp.translate(p.entrycontent, "", p.target),
-      "entryurl": JSON.parse(RESPONSE.getContentText())['uri'],
+      "entryurl": JSON.parse(RESPONSE.getContentText()).uri,
       "target": null
     });
   }

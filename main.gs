@@ -252,6 +252,7 @@ function getSheetValues(ss, row, col, width) {
   return [];
 }
 
+// 初回実行？
 function isFirstrun(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
   if (!isFound(firstrun_urls_array, feed_url)) {
     Logger.log("初回実行 " + feed_url);
@@ -260,6 +261,7 @@ function isFirstrun(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
   return false;
 }
 
+// 初回実行時にfirstrunsheetに追加
 function addFirstrunSheet(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
   // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
   if (!isFound(firstrun_urls_array, feed_url)) {

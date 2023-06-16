@@ -10,22 +10,22 @@ function main() {
     const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
     const NS_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
     // Add one line to use BetterLog https://github.com/peterherrmann/BetterLog
-    Logger = BetterLog.useSpreadsheet(getScriptProperty('spreadsheet_id'));
+    Logger = BetterLog.useSpreadsheet(getScriptProperty('betterlog_id'));
 
     // 初回実行記録シートからA2から最終行まで幅1列を取得
     const SHEET_FIRSTRUN_URLS = getSheet(SPREADSHEET, "firstrun");
     const FIRSTRUN_URLS = SHEET_FIRSTRUN_URLS.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FIRSTRUN_URLS, 2, 1, 1);
     Logger.log(FIRSTRUN_URLS);
 
-    // RSSフィードを列挙したfeedurlsシートからA2から最終行まで幅4列を取得
+    // RSSフィードを列挙したfeedurlsシート [feed url][翻訳from][翻訳to][キャッシュシート名]
     const SHEET_FEED_URLS = SPREADSHEET.getSheetByName("feedurls");
     if (!SHEET_FEED_URLS) {
-      Logger.log("feedurlsシートがないので終了します。");
+      Logger.log("feedurlsシートが見つかりません。終了します。");
       return;
     }
-    const FEED_INFO_ARRAY = getSheetValues(SHEET_FEED_URLS, 2, 1, 4);
 
     // feedurlsシートに記載されたURLをまとめて取得する
+    const FEED_INFO_ARRAY = getSheetValues(SHEET_FEED_URLS, 2, 1, 4);
     const FETCH_RESPONSES = fetchAll(FEED_INFO_ARRAY);
 
     // Tootした数の記録用
@@ -77,7 +77,8 @@ function main() {
 
             // レートリミット
             const TRIGGER_INTERVAL = 10;// mins
-            const CURRENT_RATELIMIT = Math.round(RATELIMIT_REMAINING / ((new Date(RATELIMIT_RESET_DATE) - new Date()) / (TRIGGER_INTERVAL * 60 * 1000)));
+            const RESET_WAIT_TIME = new Date(RATELIMIT_RESET_DATE) - new Date();
+            const CURRENT_RATELIMIT = Math.round(RATELIMIT_REMAINING * (TRIGGER_INTERVAL > RESET_WAIT_TIME ? 1 : TRIGGER_INTERVAL * 60 * 1000 / RESET_WAIT_TIME));
             Logger.log("現在レートリミット残 %s %, TOOT数 %s, 現在レートリミット残数 %s, レートリミット残 %s %, レートリミット残数 %s, リセット予定時刻 %s, レートリミット %s", Math.ceil((CURRENT_RATELIMIT - TOOT_COUNT) / CURRENT_RATELIMIT * 100), TOOT_COUNT, CURRENT_RATELIMIT, RATELIMIT_REMAINING_PERCENT, RATELIMIT_REMAINING, new Date(RATELIMIT_RESET_DATE).toLocaleString('ja-JP'), RATELIMIT_LIMIT);
             if (TOOT_COUNT > CURRENT_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
 
@@ -107,7 +108,7 @@ function main() {
           SHEET_FEED_CACHE.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array).removeDuplicates([1]);
         }
         SpreadsheetApp.flush();
-        Logger.log("[キャッシュ数] %s [カレント数] %s", FEED_CACHE_ENTRYTITLES.length, FEED_ENTRIES_ARRAY.length);
+        //Logger.log("[キャッシュ数] %s [カレント数] %s", FEED_CACHE_ENTRYTITLES.length, FEED_ENTRIES_ARRAY.length);
       } else {
         //ステータスが200じゃないときの処理
       }

@@ -59,11 +59,11 @@ function main() {
         // RSS情報を記録する配列
         let current_entries_array = [];
 
-        // 条件が揃ったらTootする
         FEED_ENTRIES_ARRAY.forEach(function (entry) {
           if (ratelimit_break == true) { return; }
 
           const [ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION] = getItem(XML, NS_RSS, entry, FEED_URL);
+          // 条件が揃ったらTootする
           if ((FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) && !FIRSTRUN_FLAG) {
             const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "source": TRANS_FROM, "target": TRANS_TO });
 

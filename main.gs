@@ -3,19 +3,18 @@
 */
 function main() {
   const LOCK = LockService.getDocumentLock();
-
   try {
     LOCK.waitLock(0);
-
-    const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
-    const NS_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
     // Add one line to use BetterLog https://github.com/peterherrmann/BetterLog
     Logger = BetterLog.useSpreadsheet(getScriptProperty('betterlog_id'));
+    Logger.log("開始");
+    const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
+    const NS_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
 
     // 初回実行記録シートからA2から最終行まで幅1列を取得
     const SHEET_FIRSTRUN_URLS = getSheet(SPREADSHEET, "firstrun");
     const FIRSTRUN_URLS = SHEET_FIRSTRUN_URLS.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FIRSTRUN_URLS, 2, 1, 1);
-    Logger.log(FIRSTRUN_URLS);
+    //Logger.log(FIRSTRUN_URLS);
 
     // RSSフィードを列挙したfeedurlsシート [feed url][翻訳from][翻訳to][キャッシュシート名]
     const SHEET_FEED_URLS = SPREADSHEET.getSheetByName("feedurls");
@@ -47,7 +46,7 @@ function main() {
         const TRANS_FROM = FEED_INFO_ARRAY[i][1];
         const TRANS_TO = FEED_INFO_ARRAY[i][2];
         const FEED_CACHE_SHEET_NAME = FEED_INFO_ARRAY[i][3] ? FEED_INFO_ARRAY[i][3] : "Default";
-        Logger.log("[feed title] %s [feed url] %s", FEED_TITLE, FEED_URL);
+        //Logger.log("[feed title] %s [feed url] %s", FEED_TITLE, FEED_URL);
 
         // キャッシュの取得
         const SHEET_FEED_CACHE = getSheet(SPREADSHEET, FEED_CACHE_SHEET_NAME);
@@ -66,7 +65,7 @@ function main() {
           // 条件が揃ったらTootする
           if ((FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) && !FIRSTRUN_FLAG) {
             const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "source": TRANS_FROM, "target": TRANS_TO });
-            Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
+            //Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
 
             // レスポンスヘッダからレートリミットを得る
             const TOOT_RESPONSE_HEADERS = TOOT_RESPONSE.getHeaders();
@@ -81,7 +80,7 @@ function main() {
             const TRIGGER_INTERVAL = 10;// mins
             const RESET_WAIT_TIME = new Date(RATELIMIT_RESET_DATE) - new Date();
             const CURRENT_RATELIMIT = Math.round(RATELIMIT_REMAINING * (TRIGGER_INTERVAL * 60 * 1000 > RESET_WAIT_TIME ? 1 : TRIGGER_INTERVAL * 60 * 1000 / RESET_WAIT_TIME));
-            Logger.log("現在レートリミット残 %s %, TOOT数 %s, 現在レートリミット残数 %s, レートリミット残 %s %, レートリミット残数 %s, リセット予定時刻 %s, レートリミット %s", Math.ceil((CURRENT_RATELIMIT - TOOT_COUNT) / CURRENT_RATELIMIT * 100), TOOT_COUNT, CURRENT_RATELIMIT, RATELIMIT_REMAINING_PERCENT, RATELIMIT_REMAINING, new Date(RATELIMIT_RESET_DATE).toLocaleString('ja-JP'), RATELIMIT_LIMIT);
+            Logger.log("%s, %s, 現在RL残 %s %, TOOT数 %s, 現在RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((CURRENT_RATELIMIT - TOOT_COUNT) / CURRENT_RATELIMIT * 100), TOOT_COUNT, CURRENT_RATELIMIT, RATELIMIT_REMAINING_PERCENT, RATELIMIT_REMAINING, new Date(RATELIMIT_RESET_DATE).toLocaleString('ja-JP'), RATELIMIT_LIMIT);
             if (TOOT_COUNT > CURRENT_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
 
             // レスポンスコードに応じて処理
@@ -204,11 +203,11 @@ function getItem(xml, namespace, element, feedurl) {
   if (xml.getRootElement().getChildren('channel')[0]) {
     title = element.getChildText('title').replace(/(\')/gi, ''); // シングルクォーテーションは消す。
     url = element.getChildText('link');
-    description = element.getChildText('description').replace(/(<([^>]+)>)/gi, '');
+    description = element.getChildText('description') ? element.getChildText('description').replace(/(<([^>]+)>)/gi, '') : "";
   } else {
     title = element.getChildText('title', namespace).replace(/(\')/gi, '');
     url = element.getChildText('link', namespace);
-    description = element.getChildText('description', namespace).replace(/(<([^>]+)>)/gi, '');
+    description = element.getChildText('description', namespace) ? element.getChildText('description', namespace).replace(/(<([^>]+)>)/gi, '') : "";
   }
   if (getFQDN(url) == null) {
     url = getFQDN(feedurl) + url;

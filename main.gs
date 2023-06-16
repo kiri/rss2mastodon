@@ -78,7 +78,7 @@ function main() {
             // レートリミット
             const TRIGGER_INTERVAL = 10;// mins
             const RESET_WAIT_TIME = new Date(RATELIMIT_RESET_DATE) - new Date();
-            const CURRENT_RATELIMIT = Math.round(RATELIMIT_REMAINING * (TRIGGER_INTERVAL > RESET_WAIT_TIME ? 1 : TRIGGER_INTERVAL * 60 * 1000 / RESET_WAIT_TIME));
+            const CURRENT_RATELIMIT = Math.round(RATELIMIT_REMAINING * (TRIGGER_INTERVAL * 60 * 1000 > RESET_WAIT_TIME ? 1 : TRIGGER_INTERVAL * 60 * 1000 / RESET_WAIT_TIME));
             Logger.log("現在レートリミット残 %s %, TOOT数 %s, 現在レートリミット残数 %s, レートリミット残 %s %, レートリミット残数 %s, リセット予定時刻 %s, レートリミット %s", Math.ceil((CURRENT_RATELIMIT - TOOT_COUNT) / CURRENT_RATELIMIT * 100), TOOT_COUNT, CURRENT_RATELIMIT, RATELIMIT_REMAINING_PERCENT, RATELIMIT_REMAINING, new Date(RATELIMIT_RESET_DATE).toLocaleString('ja-JP'), RATELIMIT_LIMIT);
             if (TOOT_COUNT > CURRENT_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
 

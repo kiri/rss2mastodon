@@ -26,10 +26,12 @@ function main() {
     // feedurlsシートに記載されたURLをまとめて取得する
     const FEED_INFO_ARRAY = getSheetValues(SHEET_FEED_URLS, 2, 1, 3);
     //Logger.log(FEED_INFO_ARRAY);
-    const FETCH_RESPONSES = fetchAll(FEED_INFO_ARRAY);
+    const FETCH_RESPONSES = doFetchAllFeeds(FEED_INFO_ARRAY);
 
-    // Tootした数の記録用
-    let initial_ratelimit_remaining = -1;
+    // レートリミット初期値
+    let initial_ratelimit_remaining = getScriptProperty('ratelimit_remaining');
+    Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", getScriptProperty('ratelimit_remaining'), getScriptProperty('ratelimit_limit'), getScriptProperty('ratelimit_reset_date'));
+
     // レートリミット超えで中断・スキップ判定用
     let ratelimit_break = false;
 
@@ -73,7 +75,7 @@ function main() {
             const RATELIMIT_LIMIT = Number(TOOT_RESPONSE_HEADERS['x-ratelimit-limit']);
             const RATELIMIT_RESET_DATE = TOOT_RESPONSE_HEADERS['x-ratelimit-reset'];
             const RATELIMIT_REMAINING_PERCENT = Math.round(100 * RATELIMIT_REMAINING / RATELIMIT_LIMIT);
-            if (initial_ratelimit_remaining == -1) { initial_ratelimit_remaining = RATELIMIT_REMAINING + 1; }// レートリミット残初期値
+            if (!initial_ratelimit_remaining) { initial_ratelimit_remaining = RATELIMIT_REMAINING + 1; }// レートリミット残初期値
             const TOOT_COUNT = initial_ratelimit_remaining - RATELIMIT_REMAINING;
 
             // 今回適用するレートリミットを算出
@@ -118,6 +120,7 @@ function main() {
         //ステータスが200じゃないときの処理
       }
     }
+    Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", getScriptProperty('ratelimit_remaining'), getScriptProperty('ratelimit_limit'), getScriptProperty('ratelimit_reset_date'));
     Logger.log("終了");
   } catch (e) {
     if (e.message === "HTTP 429") {
@@ -133,22 +136,15 @@ function main() {
 function doToot(p) {
   let m = "";
   m = p.entrytitle + "\n" + p.entrycontent + "\n";
+  if (p.target) {
+    m = m + "\n【翻訳】 " + LanguageApp.translate(p.feedtitle, "", p.target) + "\n";
+    m = m + LanguageApp.translate(p.entrytitle, "", p.target) + "\n";
+    m = m + LanguageApp.translate(p.entrycontent, "", p.target) + "\n";
+  }
   m = m.length + p.feedtitle.length + 1 + 30 < 500 ? m : m.substring(0, 500 - p.feedtitle.length - 1 - 30 - 7) + "(snip)\n";
   m = m + p.feedtitle + " " + p.entryurl;
-  const RESPONSE = postToot(m);
 
-  // 翻訳版のToot
-  if (RESPONSE.getResponseCode() == 200 && p.target) {
-    doToot({
-      "feedtitle": LanguageApp.translate(p.feedtitle, "", p.target),
-      "entrytitle": "【翻訳】\n" + LanguageApp.translate(p.entrytitle, "", p.target),
-      "entrycontent": LanguageApp.translate(p.entrycontent, "", p.target),
-      "entryurl": JSON.parse(RESPONSE.getContentText()).uri,
-      "target": null
-    });
-  }
-  // 本編のステータスを返す
-  return RESPONSE;
+  return postToot(m);
 }
 
 function postToot(status) {
@@ -172,7 +168,7 @@ function postToot(status) {
   }
 }
 
-function fetchAll(feedinfos) {
+function doFetchAllFeeds(feedinfos) {
   let requests = [];
 
   for (let i = 0; i < feedinfos.length; i++) {

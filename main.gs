@@ -83,6 +83,11 @@ function main() {
             Logger.log("%s, %s, 今回RL残 %s %, TOOT数 %s, 今回RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((CURRENT_RATELIMIT - TOOT_COUNT) / CURRENT_RATELIMIT * 100), TOOT_COUNT, CURRENT_RATELIMIT, RATELIMIT_REMAINING_PERCENT, RATELIMIT_REMAINING, new Date(RATELIMIT_RESET_DATE).toLocaleString('ja-JP'), RATELIMIT_LIMIT);
             if (TOOT_COUNT > CURRENT_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
 
+            // レートリミット情報をプロパティに保存
+            setScriptProperty('ratelimit_remaining', RATELIMIT_REMAINING);
+            setScriptProperty('ratelimit_limit', RATELIMIT_LIMIT);
+            setScriptProperty('ratelimit_reset_date', RATELIMIT_RESET_DATE);
+
             // レスポンスコードに応じて処理
             if (TOOT_RESPONSE.getResponseCode() == 429) {
               throw new Error("HTTP 429");
@@ -202,11 +207,11 @@ function getItem(xml, namespace, element, feedurl) {
   if (xml.getRootElement().getChildren('channel')[0]) {
     title = element.getChildText('title').replace(/(\')/gi, ''); // シングルクォーテーションは消す。
     url = element.getChildText('link');
-    description = element.getChildText('description') ? element.getChildText('description').replace(/(<([^>]+)>)/gi, '') : "";
+    description = element.getChildText('description')?.replace(/(<([^>]+)>)/gi, '');
   } else {
     title = element.getChildText('title', namespace).replace(/(\')/gi, '');
     url = element.getChildText('link', namespace);
-    description = element.getChildText('description', namespace) ? element.getChildText('description', namespace).replace(/(<([^>]+)>)/gi, '') : "";
+    description = element.getChildText('description', namespace)?.replace(/(<([^>]+)>)/gi, '');
   }
   if (getFQDN(url) == null) {
     url = getFQDN(feedurl) + url;
@@ -280,6 +285,10 @@ function addFirstrunSheet(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
 }
 
 // スクリプトプロパティ取得
-function getScriptProperty(id) {
-  return PropertiesService.getScriptProperties().getProperty(id);
+function getScriptProperty(key) {
+  return PropertiesService.getScriptProperties().getProperty(key);
+}
+// スクリプトプロパティ保存
+function setScriptProperty(key, value) {
+  return PropertiesService.getScriptProperties().setProperty(key, value);
 }

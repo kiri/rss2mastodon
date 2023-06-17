@@ -23,7 +23,7 @@ function main() {
       return;
     }
 
-    // feedurlsシートに記載されたURLをまとめて取得する
+    // feedurlsシートに記載されたURLをまとめて取得する [feed url][キャッシュシート名][翻訳]
     const FEED_INFO_ARRAY = getSheetValues(SHEET_FEED_URLS, 2, 1, 3);
     //Logger.log(FEED_INFO_ARRAY);
     const FETCH_RESPONSES = doFetchAllFeeds(FEED_INFO_ARRAY);
@@ -137,8 +137,7 @@ function doToot(p) {
   let m = "";
   m = p.entrytitle + "\n" + p.entrycontent + "\n";
   if (p.target) {
-    m = m + "\n【翻訳】 " + LanguageApp.translate(p.feedtitle, "", p.target) + "\n";
-    m = m + LanguageApp.translate(p.entrytitle, "", p.target) + "\n";
+    m = m + "\n【翻訳】 " + LanguageApp.translate(p.entrytitle, "", p.target) + "\n";
     m = m + LanguageApp.translate(p.entrycontent, "", p.target) + "\n";
   }
   m = m.length + p.feedtitle.length + 1 + 30 < 500 ? m : m.substring(0, 500 - p.feedtitle.length - 1 - 30 - 7) + "(snip)\n";

@@ -30,6 +30,11 @@ function main() {
 
     // レートリミット初期値  
     Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", getScriptProperty('ratelimit_remaining'), getScriptProperty('ratelimit_limit'), getScriptProperty('ratelimit_reset_date'));
+
+    if (!getScriptProperty('trigger_interval')) { setScriptProperty('trigger_interval', 10); } // minuites
+    if (!getScriptProperty('ratelimit_reset_date')) { setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000); } // miliseconds
+    if (!getScriptProperty('ratelimit_remaining')) { setScriptProperty('ratelimit_remaining', 300); }
+    if (!getScriptProperty('ratelimit_limit')) { setScriptProperty('ratelimit_limit', 300); }
     let initial_ratelimit_remaining;
     if (new Date() < new Date(getScriptProperty('ratelimit_reset_date'))) {
       initial_ratelimit_remaining = getScriptProperty('ratelimit_remaining');
@@ -72,11 +77,10 @@ function main() {
 
             // レスポンスヘッダからレートリミットを得る
             const T_RES_HDS = TOOT_RESPONSE.getHeaders();
-            if (!initial_ratelimit_remaining) { initial_ratelimit_remaining = Number(T_RES_HDS['x-ratelimit-limit']) + 1; }// レートリミット残初期値
             const T_COUNT = initial_ratelimit_remaining - Number(T_RES_HDS['x-ratelimit-remaining']);
 
             // 今回適用するレートリミットを算出
-            const T_INTERVAL = 10;// mins
+            const T_INTERVAL = getScriptProperty('trigger_interval');// mins 
             const R_WAIT_TIME = (new Date(T_RES_HDS['x-ratelimit-reset']) - new Date()) / (60 * 1000);
             const C_RATELIMIT = Math.round(Number(T_RES_HDS['x-ratelimit-remaining']) * (R_WAIT_TIME < T_INTERVAL ? 1 : T_INTERVAL / R_WAIT_TIME));
             Logger.log("%s, %s, 今回RL残 %s %, TOOT数 %s, 今回RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((C_RATELIMIT - T_COUNT) / C_RATELIMIT * 100), T_COUNT, C_RATELIMIT, Math.round(100 * Number(T_RES_HDS['x-ratelimit-remaining']) / Number(T_RES_HDS['x-ratelimit-limit'])), Number(T_RES_HDS['x-ratelimit-remaining']), new Date(T_RES_HDS['x-ratelimit-reset']).toLocaleString('ja-JP'), Number(T_RES_HDS['x-ratelimit-limit']));

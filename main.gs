@@ -25,7 +25,6 @@ function main() {
 
     // feedurlsシートに記載されたURLをまとめて取得する [feed url][キャッシュシート名][翻訳]
     const FEED_LIST = getSheetValues(FEED_SHEET, 2, 1, 3);
-    //Logger.log(FEED_INFO_ARRAY);
     const FEED_RESPONSES = doFetchAllFeeds(FEED_LIST);
 
     // レートリミット初期値
@@ -43,7 +42,6 @@ function main() {
         const XML = XmlService.parse(FEED_RESPONSES[i].getContentText());
         const FEED_TITLE = getFeedTitle(XML, NS_RSS);
         const FEED_ENTRIES = getFeedEntries(XML, NS_RSS);
-        //Logger.log("[feed title] %s [feed url] %s", FEED_TITLE, FEED_DATA[i][0]);
 
         // キャッシュの取得
         const FEED_CACHE_SHEET = getSheet(SPREADSHEET, FEED_LIST[i][1] ? FEED_LIST[i][1] : "Default");
@@ -65,7 +63,6 @@ function main() {
           // 条件が揃ったらTootする
           if (!FIRSTRUN_FLAG && (FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE))) {
             const TOOT_RESPONSE = postToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "target": FEED_LIST[i][2] });
-            //Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
 
             // レスポンスヘッダからレートリミットを得る
             const TOOT_RESPONSE_HEADERS = TOOT_RESPONSE.getHeaders();

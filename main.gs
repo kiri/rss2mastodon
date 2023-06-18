@@ -20,13 +20,13 @@ function main() {
     const FEED_SHEET = getSheet(SPREADSHEET, "feedurls");
     if (getSheetValues(FEED_SHEET, 2, 1, 3).length == 0) {
       Logger.log("feedurlsシートがカラです。");
-      FEED_DATA.getRange(2, 1, 1, 3).setValues([['https://news.yahoo.co.jp/rss/topics/top-picks.xml', 'en', 'Default']]);
+      FEED_LIST.getRange(2, 1, 1, 3).setValues([['https://news.yahoo.co.jp/rss/topics/top-picks.xml', 'en', 'Default']]);
     }
 
     // feedurlsシートに記載されたURLをまとめて取得する [feed url][キャッシュシート名][翻訳]
-    const FEED_DATA = getSheetValues(FEED_SHEET, 2, 1, 3);
+    const FEED_LIST = getSheetValues(FEED_SHEET, 2, 1, 3);
     //Logger.log(FEED_INFO_ARRAY);
-    const FEED_RESPONSES = doFetchAllFeeds(FEED_DATA);
+    const FEED_RESPONSES = doFetchAllFeeds(FEED_LIST);
 
     // レートリミット初期値
     let initial_ratelimit_remaining = getScriptProperty('ratelimit_remaining');
@@ -36,7 +36,7 @@ function main() {
     let ratelimit_break = false;
 
     // feedのレスポンスを順番に処理する
-    for (i = 0; i < FEED_DATA.length; i++) {
+    for (let i = 0; i < FEED_RESPONSES.length; i++) {
       if (ratelimit_break == true) { break; }
 
       if (FEED_RESPONSES[i].getResponseCode() == 200) {
@@ -46,12 +46,12 @@ function main() {
         //Logger.log("[feed title] %s [feed url] %s", FEED_TITLE, FEED_DATA[i][0]);
 
         // キャッシュの取得
-        const FEED_CACHE_SHEET = getSheet(SPREADSHEET, FEED_DATA[i][1] ? FEED_DATA[i][1] : "Default");
+        const FEED_CACHE_SHEET = getSheet(SPREADSHEET, FEED_LIST[i][1] ? FEED_LIST[i][1] : "Default");
         const FEED_CACHE_ENTRYTITLES = getSheetValues(FEED_CACHE_SHEET, 2, 1, 1); // タイトルのみ取得（A2(2,1)を起点に最終データ行までの1列分) 
         const FEED_CACHE_ENTRIES = getSheetValues(FEED_CACHE_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
 
         // 初回実行記録シートにURLが含まれているか
-        const FIRSTRUN_FLAG = isFirstrun(FEED_DATA[i][0], FIRSTRUN_URLS, FIRSTRUN_SHEET);
+        const FIRSTRUN_FLAG = isFirstrun(FEED_LIST[i][0], FIRSTRUN_URLS, FIRSTRUN_SHEET);
         // RSS情報を記録する配列
         let current_entries_array = [];
 
@@ -59,12 +59,12 @@ function main() {
           if (ratelimit_break == true) { return; }
 
           const ENTRY_TITLE = getItemTitle(XML, NS_RSS, entry);
-          const ENTRY_URL = getItemUrl(XML, NS_RSS, entry, FEED_DATA[i][0]);
+          const ENTRY_URL = getItemUrl(XML, NS_RSS, entry, FEED_LIST[i][0]);
           const ENTRY_DESCRIPTION = getItemDescription(XML, NS_RSS, entry);
 
           // 条件が揃ったらTootする
-          if ((FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) && !FIRSTRUN_FLAG) {
-            const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "target": FEED_DATA[i][2] });
+          if (!FIRSTRUN_FLAG && (FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE))) {
+            const TOOT_RESPONSE = postToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "target": FEED_LIST[i][2] });
             //Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
 
             // レスポンスヘッダからレートリミットを得る
@@ -101,7 +101,7 @@ function main() {
         });
         if (FIRSTRUN_FLAG == true) {
           // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
-          addFirstrunSheet(FEED_DATA[i][0], FIRSTRUN_URLS, FIRSTRUN_SHEET);
+          addFirstrunSheet(FEED_LIST[i][0], FIRSTRUN_URLS, FIRSTRUN_SHEET);
         }
 
         // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
@@ -131,7 +131,7 @@ function main() {
   }
 }
 
-function doToot(p) {
+function postToot(p) {
   let m = "";
   m = p.entrytitle + "\n" + p.entrycontent + "\n";
   if (p.target) {
@@ -141,12 +141,8 @@ function doToot(p) {
   m = m.length + p.feedtitle.length + 1 + 30 < 500 ? m : m.substring(0, 500 - p.feedtitle.length - 1 - 30 - 7) + "(snip)\n";
   m = m + p.feedtitle + " " + p.entryurl;
 
-  return postToot(m);
-}
-
-function postToot(status) {
   const payload = {
-    "status": status,
+    "status": m,
     "visibility": "private"
   };
   const options = {
@@ -158,11 +154,10 @@ function postToot(status) {
   };
   try {
     const RESPONSE_FETCH_MASTODON_URL = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), options);
-    //Logger.log(RESPONSE_FETCH_MASTODON_URL);
-    return RESPONSE_FETCH_MASTODON_URL;
   } catch (e) {
     Logger.log("[名前] %s\n[場所] %s(%s行目)\n[メッセージ] %s\n[StackTrace]\n%s", e.name, e.fileName, e.lineNumber, e.message, e.stack);
   }
+  return RESPONSE_FETCH_MASTODON_URL;
 }
 
 function doFetchAllFeeds(feedinfos) {
@@ -230,7 +225,7 @@ function getItemDescription(xml, namespace, element) {
 
 // 配列から一致する値の有無確認
 function isFound(array, data) {
-  for (var i = 0; i < array.length; i++) {
+  for (let i = 0; i < array.length; i++) {
     if (array[i].toString() === data) {
       return true;
     }
@@ -282,7 +277,7 @@ function addFirstrunSheet(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
     firstrun_urls_array.push(feed_url);
     if (firstrun_urls_array.length > 0) {
       let array_2d = [];
-      for (j = 0; j < firstrun_urls_array.length; j++) {
+      for (let j = 0; j < firstrun_urls_array.length; j++) {
         array_2d[j] = [firstrun_urls_array[j]];
       }
       firstrun_urls_sheet.clear();

@@ -139,7 +139,8 @@ function postToot(p) {
   let m = "";
   m = p.etitle + "\n" + p.econtent + "\n";
   if (p.to) {
-    m = m + "\n【翻訳】 " + LanguageApp.translate(p.etitle, "", p.to) + "\n" + LanguageApp.translate(p.econtent, "", p.to) + "\n";
+    m = m + "\n【翻訳】 " + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, "", p.to) + "\n";
+    // m = m + "\n【翻訳】 " + LanguageApp.translate(p.etitle, "", p.to) + "\n" + LanguageApp.translate(p.econtent, "", p.to) + "\n";
   }
 
   m = m.length + p.ftitle.length + 1 + 30 < 500 ? m : m.substring(0, 500 - p.ftitle.length - 1 - 30 - 7) + "(snip)\n";

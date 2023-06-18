@@ -25,6 +25,7 @@ function main() {
 
     // feedurlsシートに記載されたURLをまとめて取得する [feed url][キャッシュシート名][翻訳]
     const FEED_LIST = getSheetValues(FEED_SHEET, 2, 1, 3);
+    Logger.log(FEED_LIST);
     const FEED_RESPONSES = doFetchAllFeeds(FEED_LIST);
 
     // レートリミット初期値
@@ -113,6 +114,7 @@ function main() {
         //Logger.log("[キャッシュ数] %s [カレント数] %s", FEED_CACHE_ENTRYTITLES.length, FEED_ENTRIES_ARRAY.length);
       } else {
         //ステータスが200じゃないときの処理
+        Logger.log("feed:%s response:%s",FEED_LIST[i][1],FEED_RESPONSES[i].getResponseCode());
       }
     }
     Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", getScriptProperty('ratelimit_remaining'), getScriptProperty('ratelimit_limit'), getScriptProperty('ratelimit_reset_date'));
@@ -149,25 +151,23 @@ function postToot(p) {
     "contentType": "application/json",
     "muteHttpExceptions": true
   };
-  try {
-    const RESPONSE_FETCH_MASTODON_URL = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), options);
-  } catch (e) {
-    Logger.log("[名前] %s\n[場所] %s(%s行目)\n[メッセージ] %s\n[StackTrace]\n%s", e.name, e.fileName, e.lineNumber, e.message, e.stack);
-  }
+
+  const RESPONSE_FETCH_MASTODON_URL = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), options);
   return RESPONSE_FETCH_MASTODON_URL;
 }
 
-function doFetchAllFeeds(feedinfos) {
+function doFetchAllFeeds(feedlist) {
   let requests = [];
 
-  for (let i = 0; i < feedinfos.length; i++) {
+  for (let i = 0; i < feedlist.length; i++) {
     let param = {
-      url: feedinfos[i][0],
+      url: feedlist[i][0],
       method: 'get',
       followRedirects: false,
       muteHttpExceptions: true
     };
     requests.push(param);
+    Logger.log(feedlist[i][0]);
   }
 
   return UrlFetchApp.fetchAll(requests);

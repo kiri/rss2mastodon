@@ -28,9 +28,14 @@ function main() {
     Logger.log(FEED_LIST);
     const FEED_RESPONSES = doFetchAllFeeds(FEED_LIST);
 
-    // レートリミット初期値
-    let initial_ratelimit_remaining = getScriptProperty('ratelimit_remaining');
+    // レートリミット初期値  
     Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", getScriptProperty('ratelimit_remaining'), getScriptProperty('ratelimit_limit'), getScriptProperty('ratelimit_reset_date'));
+    let initial_ratelimit_remaining;
+    if (new Date() < new Date(getScriptProperty('ratelimit_reset_date'))) {
+      initial_ratelimit_remaining = getScriptProperty('ratelimit_remaining');
+    } else {
+      initial_ratelimit_remaining = getScriptProperty('ratelimit_limit');
+    }
 
     // レートリミット超えで中断・スキップ判定用
     let ratelimit_break = false;
@@ -67,13 +72,13 @@ function main() {
 
             // レスポンスヘッダからレートリミットを得る
             const T_RES_HDS = TOOT_RESPONSE.getHeaders();
-            if (!initial_ratelimit_remaining) { initial_ratelimit_remaining = Number(T_RES_HDS['x-ratelimit-remaining']) + 1; }// レートリミット残初期値
+            if (!initial_ratelimit_remaining) { initial_ratelimit_remaining = Number(T_RES_HDS['x-ratelimit-limit']) + 1; }// レートリミット残初期値
             const T_COUNT = initial_ratelimit_remaining - Number(T_RES_HDS['x-ratelimit-remaining']);
 
             // 今回適用するレートリミットを算出
             const T_INTERVAL = 10;// mins
-            const R_WAIT_TIME = new Date(T_RES_HDS['x-ratelimit-reset']) - new Date();
-            const C_RATELIMIT = Math.round(Number(T_RES_HDS['x-ratelimit-remaining']) * (T_INTERVAL * 60 * 1000 > R_WAIT_TIME ? 1 : T_INTERVAL * 60 * 1000 / R_WAIT_TIME));
+            const R_WAIT_TIME = (new Date(T_RES_HDS['x-ratelimit-reset']) - new Date()) / (60 * 1000);
+            const C_RATELIMIT = Math.round(Number(T_RES_HDS['x-ratelimit-remaining']) * (R_WAIT_TIME < T_INTERVAL ? 1 : T_INTERVAL / R_WAIT_TIME));
             Logger.log("%s, %s, 今回RL残 %s %, TOOT数 %s, 今回RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((C_RATELIMIT - T_COUNT) / C_RATELIMIT * 100), T_COUNT, C_RATELIMIT, Math.round(100 * Number(T_RES_HDS['x-ratelimit-remaining']) / Number(T_RES_HDS['x-ratelimit-limit'])), Number(T_RES_HDS['x-ratelimit-remaining']), new Date(T_RES_HDS['x-ratelimit-reset']).toLocaleString('ja-JP'), Number(T_RES_HDS['x-ratelimit-limit']));
             if (T_COUNT > C_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
 
@@ -132,7 +137,7 @@ function postToot(p) {
   if (p.to) {
     m = m + "\n【翻訳】 " + LanguageApp.translate(p.etitle, "", p.to) + "\n" + LanguageApp.translate(p.econtent, "", p.to) + "\n";
   }
-  
+
   m = m.length + p.ftitle.length + 1 + 30 < 500 ? m : m.substring(0, 500 - p.ftitle.length - 1 - 30 - 7) + "(snip)\n";
   m = m + p.ftitle + " " + p.eurl;
 

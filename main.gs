@@ -12,21 +12,21 @@ function main() {
     const NS_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
 
     // 初回実行記録シートからA2から最終行まで幅1列を取得
-    const SHEET_FIRSTRUN_URLS = getSheet(SPREADSHEET, "firstrun");
-    const FIRSTRUN_URLS = SHEET_FIRSTRUN_URLS.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FIRSTRUN_URLS, 2, 1, 1);
+    const FIRSTRUN_SHEET = getSheet(SPREADSHEET, "firstrun");
+    const FIRSTRUN_URLS = FIRSTRUN_SHEET.getLastRow() - 1 == 0 ? [] : getSheetValues(FIRSTRUN_SHEET, 2, 1, 1);
     //Logger.log(FIRSTRUN_URLS);
 
     // RSSフィードを列挙したfeedurlsシート [feed url][キャッシュシート名][翻訳]
-    const SHEET_FEED_URLS = SPREADSHEET.getSheetByName("feedurls");
-    if (!SHEET_FEED_URLS) {
-      Logger.log("feedurlsシートが見つかりません。終了します。");
-      return;
+    const FEED_SHEET = getSheet(SPREADSHEET, "feedurls");
+    if (getSheetValues(FEED_SHEET, 2, 1, 3).length == 0) {
+      Logger.log("feedurlsシートがカラです。");
+      FEED_DATA.getRange(2, 1, 1, 3).setValues([['https://news.yahoo.co.jp/rss/topics/top-picks.xml', 'en', 'Default']]);
     }
 
     // feedurlsシートに記載されたURLをまとめて取得する [feed url][キャッシュシート名][翻訳]
-    const FEED_INFO_ARRAY = getSheetValues(SHEET_FEED_URLS, 2, 1, 3);
+    const FEED_DATA = getSheetValues(FEED_SHEET, 2, 1, 3);
     //Logger.log(FEED_INFO_ARRAY);
-    const FETCH_RESPONSES = doFetchAllFeeds(FEED_INFO_ARRAY);
+    const FEED_RESPONSES = doFetchAllFeeds(FEED_DATA);
 
     // レートリミット初期値
     let initial_ratelimit_remaining = getScriptProperty('ratelimit_remaining');
@@ -36,37 +36,35 @@ function main() {
     let ratelimit_break = false;
 
     // feedのレスポンスを順番に処理する
-    for (i = 0; i < FEED_INFO_ARRAY.length; i++) {
+    for (i = 0; i < FEED_DATA.length; i++) {
       if (ratelimit_break == true) { break; }
 
-      const FETCH_RESPONSE = FETCH_RESPONSES[i];
-      if (FETCH_RESPONSE.getResponseCode() == 200) {
-        const XML = XmlService.parse(FETCH_RESPONSE.getContentText());
-        const [FEED_TITLE, FEED_ENTRIES_ARRAY] = getFeedEntries(XML, NS_RSS);
-
-        // フィード情報
-        const FEED_URL = FEED_INFO_ARRAY[i][0];
-        const FEED_CACHE_SHEET_NAME = FEED_INFO_ARRAY[i][1] ? FEED_INFO_ARRAY[i][1] : "Default";
-        const TRANS_TO = FEED_INFO_ARRAY[i][2];
-        //Logger.log("[feed title] %s [feed url] %s", FEED_TITLE, FEED_URL);
+      if (FEED_RESPONSES[i].getResponseCode() == 200) {
+        const XML = XmlService.parse(FEED_RESPONSES[i].getContentText());
+        const FEED_TITLE = getFeedTitle(XML, NS_RSS);
+        const FEED_ENTRIES = getFeedEntries(XML, NS_RSS);
+        //Logger.log("[feed title] %s [feed url] %s", FEED_TITLE, FEED_DATA[i][0]);
 
         // キャッシュの取得
-        const SHEET_FEED_CACHE = getSheet(SPREADSHEET, FEED_CACHE_SHEET_NAME);
-        const FEED_CACHE_ENTRYTITLES = SHEET_FEED_CACHE.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FEED_CACHE, 2, 1, 1); // タイトルのみ取得（A2(2,1)を起点に最終データ行までの1列分) 
-        const FEED_CACHE_ENTRIES = SHEET_FEED_CACHE.getLastRow() - 1 == 0 ? [] : getSheetValues(SHEET_FEED_CACHE, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
+        const FEED_CACHE_SHEET = getSheet(SPREADSHEET, FEED_DATA[i][1] ? FEED_DATA[i][1] : "Default");
+        const FEED_CACHE_ENTRYTITLES = getSheetValues(FEED_CACHE_SHEET, 2, 1, 1); // タイトルのみ取得（A2(2,1)を起点に最終データ行までの1列分) 
+        const FEED_CACHE_ENTRIES = getSheetValues(FEED_CACHE_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
 
         // 初回実行記録シートにURLが含まれているか
-        const FIRSTRUN_FLAG = isFirstrun(FEED_URL, FIRSTRUN_URLS, SHEET_FIRSTRUN_URLS);
+        const FIRSTRUN_FLAG = isFirstrun(FEED_DATA[i][0], FIRSTRUN_URLS, FIRSTRUN_SHEET);
         // RSS情報を記録する配列
         let current_entries_array = [];
 
-        FEED_ENTRIES_ARRAY.forEach(function (entry) {
+        FEED_ENTRIES.forEach(function (entry) {
           if (ratelimit_break == true) { return; }
 
-          const [ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION] = getItem(XML, NS_RSS, entry, FEED_URL);
+          const ENTRY_TITLE = getItemTitle(XML, NS_RSS, entry);
+          const ENTRY_URL = getItemUrl(XML, NS_RSS, entry, FEED_DATA[i][0]);
+          const ENTRY_DESCRIPTION = getItemDescription(XML, NS_RSS, entry);
+
           // 条件が揃ったらTootする
           if ((FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) && !FIRSTRUN_FLAG) {
-            const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "target": TRANS_TO });
+            const TOOT_RESPONSE = doToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "target": FEED_DATA[i][2] });
             //Logger.log("[ResponseCode] %s [ContentText] %s [Entry Title] %s", TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), ENTRY_TITLE);
 
             // レスポンスヘッダからレートリミットを得る
@@ -103,16 +101,16 @@ function main() {
         });
         if (FIRSTRUN_FLAG == true) {
           // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
-          addFirstrunSheet(FEED_URL, FIRSTRUN_URLS, SHEET_FIRSTRUN_URLS);
+          addFirstrunSheet(FEED_DATA[i][0], FIRSTRUN_URLS, FIRSTRUN_SHEET);
         }
 
         // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
         let some_mins_ago = new Date();
         some_mins_ago.setMinutes(some_mins_ago.getMinutes() - 720);
         let merged_entries_array = current_entries_array.concat(FEED_CACHE_ENTRIES.filter(function (item) { return new Date(item[3]) > some_mins_ago; }));
-        SHEET_FEED_CACHE.clear();
+        FEED_CACHE_SHEET.clear();
         if (merged_entries_array.length > 0) {
-          SHEET_FEED_CACHE.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array).removeDuplicates([1]);
+          FEED_CACHE_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array).removeDuplicates([1]);
         }
         SpreadsheetApp.flush();
         //Logger.log("[キャッシュ数] %s [カレント数] %s", FEED_CACHE_ENTRYTITLES.length, FEED_ENTRIES_ARRAY.length);
@@ -183,35 +181,51 @@ function doFetchAllFeeds(feedinfos) {
   return UrlFetchApp.fetchAll(requests);
 }
 
-function getFeedEntries(xml, namespace) {
+function getFeedTitle(xml, namespace) {
   if (xml.getRootElement().getChildren('channel')[0]) {
-    return [
-      xml.getRootElement().getChildren('channel')[0].getChildText('title'),
-      xml.getRootElement().getChildren('channel')[0].getChildren('item')
-    ];
+    return xml.getRootElement().getChildren('channel')[0].getChildText('title');
   } else {
-    return [
-      xml.getRootElement().getChildren('channel', namespace)[0].getChildText('title', namespace),
-      xml.getRootElement().getChildren('item', namespace)
-    ];
+    return xml.getRootElement().getChildren('channel', namespace)[0].getChildText('title', namespace);
   }
 }
 
-function getItem(xml, namespace, element, feedurl) {
-  let title = ""; let url = ""; let description = "";
+function getFeedEntries(xml, namespace) {
+  if (xml.getRootElement().getChildren('channel')[0]) {
+    return xml.getRootElement().getChildren('channel')[0].getChildren('item');
+  } else {
+    return xml.getRootElement().getChildren('item', namespace);
+  }
+}
+
+function getItemTitle(xml, namespace, element) {
+  let title = "";
   if (xml.getRootElement().getChildren('channel')[0]) {
     title = element.getChildText('title').replace(/(\')/gi, ''); // シングルクォーテーションは消す。
-    url = element.getChildText('link');
-    description = element.getChildText('description')?.replace(/(<([^>]+)>)/gi, '');
   } else {
     title = element.getChildText('title', namespace).replace(/(\')/gi, '');
+  }
+  return title;
+}
+function getItemUrl(xml, namespace, element, feedurl) {
+  let url = "";
+  if (xml.getRootElement().getChildren('channel')[0]) {
+    url = element.getChildText('link');
+  } else {
     url = element.getChildText('link', namespace);
-    description = element.getChildText('description', namespace)?.replace(/(<([^>]+)>)/gi, '');
   }
   if (getFQDN(url) == null) {
     url = getFQDN(feedurl) + url;
   }
-  return [title, url, description];
+  return url;
+}
+function getItemDescription(xml, namespace, element) {
+  let description = "";
+  if (xml.getRootElement().getChildren('channel')[0]) {
+    description = element.getChildText('description')?.replace(/(<([^>]+)>)/gi, '');
+  } else {
+    description = element.getChildText('description', namespace)?.replace(/(<([^>]+)>)/gi, '');
+  }
+  return description;
 }
 
 // 配列から一致する値の有無確認

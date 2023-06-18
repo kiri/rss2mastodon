@@ -13,7 +13,7 @@ function main() {
 
     // 初回実行記録シートからA2から最終行まで幅1列を取得
     const FIRSTRUN_SHEET = getSheet(SPREADSHEET, "firstrun");
-    const FIRSTRUN_URLS = FIRSTRUN_SHEET.getLastRow() - 1 == 0 ? [] : getSheetValues(FIRSTRUN_SHEET, 2, 1, 1);
+    const FIRSTRUN_URLS = getSheetValues(FIRSTRUN_SHEET, 2, 1, 1);
     //Logger.log(FIRSTRUN_URLS);
 
     // RSSフィードを列挙したfeedurlsシート [feed url][キャッシュシート名][翻訳]
@@ -63,28 +63,24 @@ function main() {
 
           // 条件が揃ったらTootする
           if (!FIRSTRUN_FLAG && (FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE))) {
-            const TOOT_RESPONSE = postToot({ "feedtitle": FEED_TITLE, "entrytitle": ENTRY_TITLE, "entrycontent": ENTRY_DESCRIPTION, "entryurl": ENTRY_URL, "target": FEED_LIST[i][2] });
+            const TOOT_RESPONSE = postToot({ "ftitle": FEED_TITLE, "etitle": ENTRY_TITLE, "econtent": ENTRY_DESCRIPTION, "eurl": ENTRY_URL, "to": FEED_LIST[i][2] });
 
             // レスポンスヘッダからレートリミットを得る
-            const TOOT_RESPONSE_HEADERS = TOOT_RESPONSE.getHeaders();
-            const RATELIMIT_REMAINING = Number(TOOT_RESPONSE_HEADERS['x-ratelimit-remaining']);
-            const RATELIMIT_LIMIT = Number(TOOT_RESPONSE_HEADERS['x-ratelimit-limit']);
-            const RATELIMIT_RESET_DATE = TOOT_RESPONSE_HEADERS['x-ratelimit-reset'];
-            const RATELIMIT_REMAINING_PERCENT = Math.round(100 * RATELIMIT_REMAINING / RATELIMIT_LIMIT);
-            if (!initial_ratelimit_remaining) { initial_ratelimit_remaining = RATELIMIT_REMAINING + 1; }// レートリミット残初期値
-            const TOOT_COUNT = initial_ratelimit_remaining - RATELIMIT_REMAINING;
+            const T_RES_HDS = TOOT_RESPONSE.getHeaders();
+            if (!initial_ratelimit_remaining) { initial_ratelimit_remaining = Number(T_RES_HDS['x-ratelimit-remaining']) + 1; }// レートリミット残初期値
+            const T_COUNT = initial_ratelimit_remaining - Number(T_RES_HDS['x-ratelimit-remaining']);
 
             // 今回適用するレートリミットを算出
-            const TRIGGER_INTERVAL = 10;// mins
-            const RESET_WAIT_TIME = new Date(RATELIMIT_RESET_DATE) - new Date();
-            const CURRENT_RATELIMIT = Math.round(RATELIMIT_REMAINING * (TRIGGER_INTERVAL * 60 * 1000 > RESET_WAIT_TIME ? 1 : TRIGGER_INTERVAL * 60 * 1000 / RESET_WAIT_TIME));
-            Logger.log("%s, %s, 今回RL残 %s %, TOOT数 %s, 今回RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((CURRENT_RATELIMIT - TOOT_COUNT) / CURRENT_RATELIMIT * 100), TOOT_COUNT, CURRENT_RATELIMIT, RATELIMIT_REMAINING_PERCENT, RATELIMIT_REMAINING, new Date(RATELIMIT_RESET_DATE).toLocaleString('ja-JP'), RATELIMIT_LIMIT);
-            if (TOOT_COUNT > CURRENT_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
+            const T_INTERVAL = 10;// mins
+            const R_WAIT_TIME = new Date(T_RES_HDS['x-ratelimit-reset']) - new Date();
+            const C_RATELIMIT = Math.round(Number(T_RES_HDS['x-ratelimit-remaining']) * (T_INTERVAL * 60 * 1000 > R_WAIT_TIME ? 1 : T_INTERVAL * 60 * 1000 / R_WAIT_TIME));
+            Logger.log("%s, %s, 今回RL残 %s %, TOOT数 %s, 今回RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((C_RATELIMIT - T_COUNT) / C_RATELIMIT * 100), T_COUNT, C_RATELIMIT, Math.round(100 * Number(T_RES_HDS['x-ratelimit-remaining']) / Number(T_RES_HDS['x-ratelimit-limit'])), Number(T_RES_HDS['x-ratelimit-remaining']), new Date(T_RES_HDS['x-ratelimit-reset']).toLocaleString('ja-JP'), Number(T_RES_HDS['x-ratelimit-limit']));
+            if (T_COUNT > C_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
 
             // レートリミット情報をプロパティに保存
-            setScriptProperty('ratelimit_remaining', RATELIMIT_REMAINING);
-            setScriptProperty('ratelimit_limit', RATELIMIT_LIMIT);
-            setScriptProperty('ratelimit_reset_date', RATELIMIT_RESET_DATE);
+            setScriptProperty('ratelimit_remaining', Number(T_RES_HDS['x-ratelimit-remaining']));
+            setScriptProperty('ratelimit_limit', Number(T_RES_HDS['x-ratelimit-limit']));
+            setScriptProperty('ratelimit_reset_date', T_RES_HDS['x-ratelimit-reset']);
 
             // レスポンスコードに応じて処理
             if (TOOT_RESPONSE.getResponseCode() == 429) {
@@ -114,7 +110,7 @@ function main() {
         //Logger.log("[キャッシュ数] %s [カレント数] %s", FEED_CACHE_ENTRYTITLES.length, FEED_ENTRIES_ARRAY.length);
       } else {
         //ステータスが200じゃないときの処理
-        Logger.log("feed:%s response:%s",FEED_LIST[i][1],FEED_RESPONSES[i].getResponseCode());
+        Logger.log("feed:%s response:%s", FEED_LIST[i][1], FEED_RESPONSES[i].getResponseCode());
       }
     }
     Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", getScriptProperty('ratelimit_remaining'), getScriptProperty('ratelimit_limit'), getScriptProperty('ratelimit_reset_date'));
@@ -132,13 +128,13 @@ function main() {
 
 function postToot(p) {
   let m = "";
-  m = p.entrytitle + "\n" + p.entrycontent + "\n";
-  if (p.target) {
-    m = m + "\n【翻訳】 " + LanguageApp.translate(p.entrytitle, "", p.target) + "\n";
-    m = m + LanguageApp.translate(p.entrycontent, "", p.target) + "\n";
+  m = p.etitle + "\n" + p.econtent + "\n";
+  if (p.to) {
+    m = m + "\n【翻訳】 " + LanguageApp.translate(p.etitle, "", p.to) + "\n" + LanguageApp.translate(p.econtent, "", p.to) + "\n";
   }
-  m = m.length + p.feedtitle.length + 1 + 30 < 500 ? m : m.substring(0, 500 - p.feedtitle.length - 1 - 30 - 7) + "(snip)\n";
-  m = m + p.feedtitle + " " + p.entryurl;
+  
+  m = m.length + p.ftitle.length + 1 + 30 < 500 ? m : m.substring(0, 500 - p.ftitle.length - 1 - 30 - 7) + "(snip)\n";
+  m = m + p.ftitle + " " + p.eurl;
 
   const payload = {
     "status": m,
@@ -152,8 +148,7 @@ function postToot(p) {
     "muteHttpExceptions": true
   };
 
-  const RESPONSE_FETCH_MASTODON_URL = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), options);
-  return RESPONSE_FETCH_MASTODON_URL;
+  return UrlFetchApp.fetch(getScriptProperty('mastodon_url'), options);
 }
 
 function doFetchAllFeeds(feedlist) {
@@ -167,7 +162,6 @@ function doFetchAllFeeds(feedlist) {
       muteHttpExceptions: true
     };
     requests.push(param);
-    Logger.log(feedlist[i][0]);
   }
 
   return UrlFetchApp.fetchAll(requests);
@@ -198,6 +192,7 @@ function getItemTitle(xml, namespace, element) {
   }
   return title;
 }
+
 function getItemUrl(xml, namespace, element, feedurl) {
   let url = "";
   if (xml.getRootElement().getChildren('channel')[0]) {
@@ -210,6 +205,7 @@ function getItemUrl(xml, namespace, element, feedurl) {
   }
   return url;
 }
+
 function getItemDescription(xml, namespace, element) {
   let description = "";
   if (xml.getRootElement().getChildren('channel')[0]) {

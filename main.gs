@@ -2,16 +2,16 @@
  RSSをmastodonへtoot
 */
 const NS_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
+const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
+// Add one line to use BetterLog https://github.com/peterherrmann/BetterLog
+Logger = BetterLog.useSpreadsheet(getScriptProperty('betterlog_id'));
 
 function main() {
   const LOCK = LockService.getDocumentLock();
+
   try {
     LOCK.waitLock(0);
-    // Add one line to use BetterLog https://github.com/peterherrmann/BetterLog
-    Logger = BetterLog.useSpreadsheet(getScriptProperty('betterlog_id'));
     Logger.log("開始");
-    const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
-
 
     // 初回実行記録シートからA2から最終行まで幅1列を取得
     const FIRSTRUN_SHEET = getSheet(SPREADSHEET, "firstrun");

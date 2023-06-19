@@ -63,6 +63,7 @@ function main() {
         const FIRSTRUN_FLAG = isFirstrun(FEED_LIST[i][0], FIRSTRUN_URLS, FIRSTRUN_SHEET);
         // RSS情報を記録する配列
         let current_entries_array = [];
+        let t_count = 0;
 
         FEED_ENTRIES.forEach(function (entry) {
           if (ratelimit_break == true) { return; }
@@ -74,17 +75,17 @@ function main() {
           // 条件が揃ったらTootする
           if (!FIRSTRUN_FLAG && (FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE))) {
             const TOOT_RESPONSE = postToot({ "ftitle": FEED_TITLE, "etitle": ENTRY_TITLE, "econtent": ENTRY_DESCRIPTION, "eurl": ENTRY_URL, "to": FEED_LIST[i][2] });
+            t_count++;
 
             // レスポンスヘッダからレートリミットを得る
             const T_RES_HDS = TOOT_RESPONSE.getHeaders();
-            const T_COUNT = initial_ratelimit_remaining - Number(T_RES_HDS['x-ratelimit-remaining']);
 
             // 今回適用するレートリミットを算出
             const T_INTERVAL = getScriptProperty('trigger_interval');// mins 
             const R_WAIT_TIME = (new Date(T_RES_HDS['x-ratelimit-reset']) - new Date()) / (60 * 1000);
             const C_RATELIMIT = Math.round(Number(T_RES_HDS['x-ratelimit-remaining']) * (R_WAIT_TIME < T_INTERVAL ? 1 : T_INTERVAL / R_WAIT_TIME));
-            Logger.log("%s, %s, 今回RL残 %s %, TOOT数 %s, 今回RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((C_RATELIMIT - T_COUNT) / C_RATELIMIT * 100), T_COUNT, C_RATELIMIT, Math.round(100 * Number(T_RES_HDS['x-ratelimit-remaining']) / Number(T_RES_HDS['x-ratelimit-limit'])), Number(T_RES_HDS['x-ratelimit-remaining']), new Date(T_RES_HDS['x-ratelimit-reset']).toLocaleString('ja-JP'), Number(T_RES_HDS['x-ratelimit-limit']));
-            if (T_COUNT > C_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
+            Logger.log("%s, %s, 今回RL残 %s %, TOOT数 %s, 今回RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((C_RATELIMIT - t_count) / C_RATELIMIT * 100), t_count, C_RATELIMIT, Math.round(100 * Number(T_RES_HDS['x-ratelimit-remaining']) / Number(T_RES_HDS['x-ratelimit-limit'])), Number(T_RES_HDS['x-ratelimit-remaining']), new Date(T_RES_HDS['x-ratelimit-reset']).toLocaleString('ja-JP'), Number(T_RES_HDS['x-ratelimit-limit']));
+            if (t_count > C_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
 
             // レートリミット情報をプロパティに保存
             setScriptProperty('ratelimit_remaining', Number(T_RES_HDS['x-ratelimit-remaining']));

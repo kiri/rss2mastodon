@@ -1,6 +1,8 @@
 /*
  RSSをmastodonへtoot
 */
+const NS_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
+
 function main() {
   const LOCK = LockService.getDocumentLock();
   try {
@@ -9,7 +11,7 @@ function main() {
     Logger = BetterLog.useSpreadsheet(getScriptProperty('betterlog_id'));
     Logger.log("開始");
     const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
-    const NS_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
+
 
     // 初回実行記録シートからA2から最終行まで幅1列を取得
     const FIRSTRUN_SHEET = getSheet(SPREADSHEET, "firstrun");
@@ -29,30 +31,22 @@ function main() {
     const FEED_RESPONSES = doFetchAllFeeds(FEED_LIST);
 
     // レートリミット初期値  
-    Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", getScriptProperty('ratelimit_remaining'), getScriptProperty('ratelimit_limit'), getScriptProperty('ratelimit_reset_date'));
-
     if (!getScriptProperty('trigger_interval')) { setScriptProperty('trigger_interval', 10); } // minuites
     if (!getScriptProperty('ratelimit_reset_date')) { setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000); } // miliseconds
     if (!getScriptProperty('ratelimit_remaining')) { setScriptProperty('ratelimit_remaining', 300); }
     if (!getScriptProperty('ratelimit_limit')) { setScriptProperty('ratelimit_limit', 300); }
-    let initial_ratelimit_remaining;
-    if (new Date() < new Date(getScriptProperty('ratelimit_reset_date'))) {
-      initial_ratelimit_remaining = getScriptProperty('ratelimit_remaining');
-    } else {
-      initial_ratelimit_remaining = getScriptProperty('ratelimit_limit');
-    }
+    Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", getScriptProperty('ratelimit_remaining'), getScriptProperty('ratelimit_limit'), getScriptProperty('ratelimit_reset_date'));
 
-    // レートリミット超えで中断・スキップ判定用
+    // レートリミット超えによる中断・スキップ判定用
     let ratelimit_break = false;
 
     // feedのレスポンスを順番に処理する
-    for (let i = 0; i < FEED_RESPONSES.length; i++) {
-      if (ratelimit_break == true) { break; }
-
+    for (let i = 0; i < FEED_RESPONSES.length && !ratelimit_break; i++) {
       if (FEED_RESPONSES[i].getResponseCode() == 200) {
         const XML = XmlService.parse(FEED_RESPONSES[i].getContentText());
-        const FEED_TITLE = getFeedTitle(XML, NS_RSS);
-        const FEED_ENTRIES = getFeedEntries(XML, NS_RSS);
+        const FEED_TITLE = getFeedTitle(XML);
+        const FEED_ENTRIES = getFeedEntries(XML);
+        const RSSTYPE = XML.getRootElement().getChildren('channel')[0] ? 1 : 2;
 
         // キャッシュの取得
         const FEED_CACHE_SHEET = getSheet(SPREADSHEET, FEED_LIST[i][1] ? FEED_LIST[i][1] : "Default");
@@ -65,44 +59,45 @@ function main() {
         let current_entries_array = [];
         let t_count = 0;
 
-        FEED_ENTRIES.forEach(function (entry) {
-          if (ratelimit_break == true) { return; }
-
-          const ENTRY_TITLE = getItemTitle(XML, NS_RSS, entry);
-          const ENTRY_URL = getItemUrl(XML, NS_RSS, entry, FEED_LIST[i][0]);
-          const ENTRY_DESCRIPTION = getItemDescription(XML, NS_RSS, entry);
-
-          // 条件が揃ったらTootする
-          if (!FIRSTRUN_FLAG && (FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE))) {
-            const TOOT_RESPONSE = postToot({ "ftitle": FEED_TITLE, "etitle": ENTRY_TITLE, "econtent": ENTRY_DESCRIPTION, "eurl": ENTRY_URL, "to": FEED_LIST[i][2] });
-            t_count++;
-
-            // レスポンスヘッダからレートリミットを得る
-            const T_RES_HDS = TOOT_RESPONSE.getHeaders();
-
-            // 今回適用するレートリミットを算出
+        if (!FIRSTRUN_FLAG && !ratelimit_break) {
+          FEED_ENTRIES.forEach(function (entry) {
             const T_INTERVAL = getScriptProperty('trigger_interval');// mins 
-            const R_WAIT_TIME = (new Date(T_RES_HDS['x-ratelimit-reset']) - new Date()) / (60 * 1000);
-            const C_RATELIMIT = Math.round(Number(T_RES_HDS['x-ratelimit-remaining']) * (R_WAIT_TIME < T_INTERVAL ? 1 : T_INTERVAL / R_WAIT_TIME));
-            Logger.log("%s, %s, 今回RL残 %s %, TOOT数 %s, 今回RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((C_RATELIMIT - t_count) / C_RATELIMIT * 100), t_count, C_RATELIMIT, Math.round(100 * Number(T_RES_HDS['x-ratelimit-remaining']) / Number(T_RES_HDS['x-ratelimit-limit'])), Number(T_RES_HDS['x-ratelimit-remaining']), new Date(T_RES_HDS['x-ratelimit-reset']).toLocaleString('ja-JP'), Number(T_RES_HDS['x-ratelimit-limit']));
-            if (t_count > C_RATELIMIT) { ratelimit_break = true; } // レートリミットを超えたら終了フラグを立てる 
-
-            // レートリミット情報をプロパティに保存
-            setScriptProperty('ratelimit_remaining', Number(T_RES_HDS['x-ratelimit-remaining']));
-            setScriptProperty('ratelimit_limit', Number(T_RES_HDS['x-ratelimit-limit']));
-            setScriptProperty('ratelimit_reset_date', T_RES_HDS['x-ratelimit-reset']);
-
-            // レスポンスコードに応じて処理
-            if (TOOT_RESPONSE.getResponseCode() == 429) {
-              throw new Error("HTTP 429");
-            } else if (TOOT_RESPONSE.getResponseCode() != 200) {
-              Utilities.sleep(5 * 1000);
+            const R_WAIT_TIME = (new Date(getScriptProperty('ratelimit_reset_date')) - new Date()) / (60 * 1000);
+            const C_RATELIMIT = Math.round(getScriptProperty('ratelimit_remaining') * (R_WAIT_TIME < T_INTERVAL ? 1 : T_INTERVAL / R_WAIT_TIME));
+            if (t_count > C_RATELIMIT) { // レートリミットを超えたら終了フラグを立てる
+              ratelimit_break = true;
               return;
             }
-          }
-          // RSS情報を配列に保存。後でまとめてSHEETに書き込む
-          current_entries_array.push([ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION, new Date().toISOString()]);
-        });
+
+            const ENTRY_TITLE = getItemTitle(RSSTYPE, entry);
+            const ENTRY_URL = getItemUrl(RSSTYPE, entry, FEED_LIST[i][0]);
+            const ENTRY_DESCRIPTION = getItemDescription(RSSTYPE, entry);
+
+            if (FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) {
+              const TOOT_RESPONSE = postToot({ "ftitle": FEED_TITLE, "etitle": ENTRY_TITLE, "econtent": ENTRY_DESCRIPTION, "eurl": ENTRY_URL, "to": FEED_LIST[i][2] });
+              t_count++;
+
+              Logger.log("%s, %s, 今回RL残 %s %, TOOT数 %s, 今回RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((C_RATELIMIT - t_count) / C_RATELIMIT * 100), t_count, C_RATELIMIT, Math.round(100 * Number(getScriptProperty('ratelimit_remaining')) / Number(getScriptProperty('ratelimit_limit'))), Number(getScriptProperty('ratelimit_remaining')), new Date(getScriptProperty('ratelimit_reset_date')).toLocaleString('ja-JP'), Number(getScriptProperty('ratelimit_limit')));
+
+              // レートリミット情報をプロパティに保存
+              const T_RES_HDS = TOOT_RESPONSE.getHeaders();
+              setScriptProperty('ratelimit_remaining', Number(T_RES_HDS['x-ratelimit-remaining']));
+              setScriptProperty('ratelimit_limit', Number(T_RES_HDS['x-ratelimit-limit']));
+              setScriptProperty('ratelimit_reset_date', T_RES_HDS['x-ratelimit-reset']);
+
+              // レスポンスコードに応じて処理
+              if (TOOT_RESPONSE.getResponseCode() == 429) {
+                throw new Error("HTTP 429");
+              } else if (TOOT_RESPONSE.getResponseCode() != 200) {
+                Utilities.sleep(5 * 1000);
+                return;
+              }
+            }
+            // RSS情報を配列に保存。後でまとめてSHEETに書き込む
+            current_entries_array.push([ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION, new Date().toISOString()]);
+          });
+        }
+
         if (FIRSTRUN_FLAG == true) {
           // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
           addFirstrunSheet(FEED_LIST[i][0], FIRSTRUN_URLS, FIRSTRUN_SHEET);
@@ -178,38 +173,44 @@ function doFetchAllFeeds(feedlist) {
   return UrlFetchApp.fetchAll(requests);
 }
 
-function getFeedTitle(xml, namespace) {
+function getFeedTitle(xml) {
   if (xml.getRootElement().getChildren('channel')[0]) {
     return xml.getRootElement().getChildren('channel')[0].getChildText('title');
   } else {
-    return xml.getRootElement().getChildren('channel', namespace)[0].getChildText('title', namespace);
+    return xml.getRootElement().getChildren('channel', NS_RSS)[0].getChildText('title', NS_RSS);
   }
 }
 
-function getFeedEntries(xml, namespace) {
+function getFeedEntries(xml) {
   if (xml.getRootElement().getChildren('channel')[0]) {
     return xml.getRootElement().getChildren('channel')[0].getChildren('item');
   } else {
-    return xml.getRootElement().getChildren('item', namespace);
+    return xml.getRootElement().getChildren('item', NS_RSS);
   }
 }
 
-function getItemTitle(xml, namespace, element) {
+function getItemTitle(rsstype, element) {
   let title = "";
-  if (xml.getRootElement().getChildren('channel')[0]) {
-    title = element.getChildText('title').replace(/(\')/gi, ''); // シングルクォーテーションは消す。
-  } else {
-    title = element.getChildText('title', namespace).replace(/(\')/gi, '');
+  switch (rsstype) {
+    case 1:
+      title = element.getChildText('title').replace(/(\')/gi, ''); // シングルクォーテーションは消す。
+      break;
+    case 2:
+      title = element.getChildText('title', NS_RSS).replace(/(\')/gi, '');
+      break;
   }
   return title;
 }
 
-function getItemUrl(xml, namespace, element, feedurl) {
+function getItemUrl(rsstype, element, feedurl) {
   let url = "";
-  if (xml.getRootElement().getChildren('channel')[0]) {
-    url = element.getChildText('link');
-  } else {
-    url = element.getChildText('link', namespace);
+  switch (rsstype) {
+    case 1:
+      url = element.getChildText('link');
+      break;
+    case 2:
+      url = element.getChildText('link', NS_RSS);
+      break;
   }
   if (getFQDN(url) == null) {
     url = getFQDN(feedurl) + url;
@@ -217,12 +218,15 @@ function getItemUrl(xml, namespace, element, feedurl) {
   return url;
 }
 
-function getItemDescription(xml, namespace, element) {
+function getItemDescription(rsstype, element) {
   let description = "";
-  if (xml.getRootElement().getChildren('channel')[0]) {
-    description = element.getChildText('description')?.replace(/(<([^>]+)>)/gi, '');
-  } else {
-    description = element.getChildText('description', namespace)?.replace(/(<([^>]+)>)/gi, '');
+  switch (rsstype) {
+    case 1:
+      description = element.getChildText('description')?.replace(/(<([^>]+)>)/gi, '');
+      break;
+    case 2:
+      description = element.getChildText('description', NS_RSS)?.replace(/(<([^>]+)>)/gi, '');
+      break;
   }
   return description;
 }

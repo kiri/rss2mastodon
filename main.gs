@@ -38,20 +38,21 @@ function main() {
     if (!getScriptProperty('trigger_interval') || !getScriptProperty('ratelimit_remaining') ||
       !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
       setScriptProperty('trigger_interval', 10); // minuites 
-      setScriptProperty('ratelimit_remaining', 300);
       setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
+      setScriptProperty('ratelimit_remaining', 300);
       setScriptProperty('ratelimit_limit', 300);
     }
     if (new Date(getScriptProperty('ratelimit_reset_date')) <= new Date()) {
-      setScriptProperty('ratelimit_remaining', 300);
       setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
-    } else if (getScriptProperty('ratelimit_remaining') == 0) {
-      ratelimit_break = true;
+      setScriptProperty('ratelimit_remaining', 300);
     }
     let trigger_interval = Number(getScriptProperty('trigger_interval'));
     let ratelimit_reset_date = getScriptProperty('ratelimit_reset_date');
     let ratelimit_remaining = Number(getScriptProperty('ratelimit_remaining'));
     let ratelimit_limit = Number(getScriptProperty('ratelimit_limit'));
+    if (ratelimit_remaining == 0) {
+      ratelimit_break = true;
+    }
     Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", ratelimit_remaining, ratelimit_limit, ratelimit_reset_date);
 
     // feedのレスポンスを順番に処理する
@@ -133,7 +134,7 @@ function main() {
     setScriptProperty('ratelimit_remaining', ratelimit_remaining);
     setScriptProperty('ratelimit_limit', ratelimit_limit);
 
-    Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", getScriptProperty('ratelimit_remaining'), getScriptProperty('ratelimit_limit'), getScriptProperty('ratelimit_reset_date'));
+    Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", ratelimit_remaining, ratelimit_limit, ratelimit_reset_date);
     Logger.log("終了");
   } catch (e) {
     if (e.message === "HTTP 429") {

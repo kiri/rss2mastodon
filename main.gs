@@ -30,15 +30,25 @@ function main() {
     Logger.log(FEED_LIST);
     const FEED_RESPONSES = doFetchAllFeeds(FEED_LIST);
 
-    // レートリミット初期値  
-    if (!getScriptProperty('trigger_interval')) { setScriptProperty('trigger_interval', 10); } // minuites
-    if (!getScriptProperty('ratelimit_reset_date')) { setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000); } // miliseconds
-    if (!getScriptProperty('ratelimit_remaining')) { setScriptProperty('ratelimit_remaining', 300); }
-    if (!getScriptProperty('ratelimit_limit')) { setScriptProperty('ratelimit_limit', 300); }
-    Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", getScriptProperty('ratelimit_remaining'), getScriptProperty('ratelimit_limit'), getScriptProperty('ratelimit_reset_date'));
-
     // レートリミット超えによる中断・スキップ判定用
     let ratelimit_break = false;
+    let t_count = 0;
+
+    // レートリミット初期値  
+    if (!getScriptProperty('trigger_interval') || !getScriptProperty('ratelimit_remaining') ||
+      !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
+      setScriptProperty('trigger_interval', 10); // minuites 
+      setScriptProperty('ratelimit_remaining', 300);
+      setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
+      setScriptProperty('ratelimit_limit', 300);
+    }
+    if (new Date(getScriptProperty('ratelimit_reset_date')) <= new Date()) {
+      setScriptProperty('ratelimit_remaining', 300);
+      setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
+    } else if (getScriptProperty('ratelimit_remaining') == 0) {
+      ratelimit_break = true;
+    }
+    Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", getScriptProperty('ratelimit_remaining'), getScriptProperty('ratelimit_limit'), getScriptProperty('ratelimit_reset_date'));
 
     // feedのレスポンスを順番に処理する
     for (let i = 0; i < FEED_RESPONSES.length && !ratelimit_break; i++) {
@@ -54,10 +64,9 @@ function main() {
         const FEED_CACHE_ENTRIES = getSheetValues(FEED_CACHE_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
 
         // 初回実行記録シートにURLが含まれているか
-        const FIRSTRUN_FLAG = isFirstrun(FEED_LIST[i][0], FIRSTRUN_URLS, FIRSTRUN_SHEET);
+        const FIRSTRUN_FLAG = isFirstrun(FEED_LIST[i][0], FIRSTRUN_URLS);
         // RSS情報を記録する配列
         let current_entries_array = [];
-        let t_count = 0;
 
         if (!FIRSTRUN_FLAG && !ratelimit_break) {
           FEED_ENTRIES.forEach(function (entry) {
@@ -105,7 +114,7 @@ function main() {
 
         // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
         let some_mins_ago = new Date();
-        some_mins_ago.setMinutes(some_mins_ago.getMinutes() - 720);
+        some_mins_ago.setMinutes(some_mins_ago.getMinutes() - 120);
         let merged_entries_array = current_entries_array.concat(FEED_CACHE_ENTRIES.filter(function (item) { return new Date(item[3]) > some_mins_ago; }));
         FEED_CACHE_SHEET.clear();
         if (merged_entries_array.length > 0) {
@@ -233,12 +242,16 @@ function getItemDescription(rsstype, element) {
 
 // 配列から一致する値の有無確認
 function isFound(array, data) {
+  return array.some(v => v.includes(data));
+  /*
+  let s_time = new Date();
   for (let i = 0; i < array.length; i++) {
     if (array[i].toString() === data) {
       return true;
     }
   }
   return false;
+*/
 }
 
 // urlからFQDNを取得
@@ -268,7 +281,7 @@ function getSheetValues(ss, row, col, width) {
 }
 
 // 初回実行？
-function isFirstrun(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
+function isFirstrun(feed_url, firstrun_urls_array) {
   if (!isFound(firstrun_urls_array, feed_url)) {
     Logger.log("初回実行 " + feed_url);
     return true;

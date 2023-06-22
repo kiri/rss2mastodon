@@ -35,9 +35,10 @@ function main() {
     let t_count = 0;
 
     // レートリミット初期値  
-    if (!getScriptProperty('trigger_interval') || !getScriptProperty('ratelimit_remaining') ||
+    if (!getScriptProperty('trigger_interval') || !getScriptProperty('cache_max_age') || !getScriptProperty('ratelimit_remaining') ||
       !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
       setScriptProperty('trigger_interval', 10); // minuites 
+      setScriptProperty('cache_max_age', 120); // minuites
       setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
       setScriptProperty('ratelimit_remaining', 300);
       setScriptProperty('ratelimit_limit', 300);
@@ -47,6 +48,7 @@ function main() {
       setScriptProperty('ratelimit_remaining', 300);
     }
     let trigger_interval = Number(getScriptProperty('trigger_interval'));
+    let cache_max_age = Number(getScriptProperty('cache_max_age'));
     let ratelimit_reset_date = getScriptProperty('ratelimit_reset_date');
     let ratelimit_remaining = Number(getScriptProperty('ratelimit_remaining'));
     let ratelimit_limit = Number(getScriptProperty('ratelimit_limit'));
@@ -116,7 +118,7 @@ function main() {
         }
         // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
         let some_mins_ago = new Date();
-        some_mins_ago.setMinutes(some_mins_ago.getMinutes() - 120);
+        some_mins_ago.setMinutes(some_mins_ago.getMinutes() - cache_max_age);
         let merged_entries_array = current_entries_array.concat(FEED_CACHE_ENTRIES.filter(function (item) { return new Date(item[3]) > some_mins_ago; }));
         FEED_CACHE_SHEET.clear();
         if (merged_entries_array.length > 0) {

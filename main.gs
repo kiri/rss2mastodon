@@ -13,28 +13,11 @@ function main() {
     LOCK.waitLock(0);
     Logger.log("開始");
 
-    // 初回実行記録シートからA2から最終行まで幅1列を取得
-    const FIRSTRUN_SHEET = getSheet(SPREADSHEET, "firstrun");
-    const FIRSTRUN_URLS = getSheetValues(FIRSTRUN_SHEET, 2, 1, 1);
-    //Logger.log(FIRSTRUN_URLS);
-
-    // RSSフィードを列挙したfeedurlsシート [feed url][キャッシュシート名][翻訳]
-    const FEED_SHEET = getSheet(SPREADSHEET, "feedurls");
-    if (getSheetValues(FEED_SHEET, 2, 1, 3).length == 0) {
-      Logger.log("feedurlsシートがカラです。");
-      FEED_LIST.getRange(2, 1, 1, 3).setValues([['https://news.yahoo.co.jp/rss/topics/top-picks.xml', 'en', 'Default']]);
-    }
-
-    // feedurlsシートに記載されたURLをまとめて取得する [feed url][キャッシュシート名][翻訳]
-    const FEED_LIST = getSheetValues(FEED_SHEET, 2, 1, 3);
-    Logger.log(FEED_LIST);
-    const FEED_RESPONSES = doFetchAllFeeds(FEED_LIST);
-
     // レートリミット超えによる中断・スキップ判定用
     let ratelimit_break = false;
     let t_count = 0;
 
-    // レートリミット初期値  
+    // スクリプトプロパティ取得  
     if (!getScriptProperty('trigger_interval') || !getScriptProperty('cache_max_age') || !getScriptProperty('ratelimit_remaining') ||
       !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
       setScriptProperty('trigger_interval', 10); // minuites 
@@ -55,7 +38,24 @@ function main() {
     if (ratelimit_remaining == 0) {
       ratelimit_break = true;
     }
-    Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", ratelimit_remaining, ratelimit_limit, ratelimit_reset_date);
+    Logger.log("trigger_interval %s cache_max_age %s ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", trigger_interval, cache_max_age, ratelimit_remaining, ratelimit_limit, ratelimit_reset_date);
+
+    // 初回実行記録シートからA2から最終行まで幅1列を取得
+    const FIRSTRUN_SHEET = getSheet(SPREADSHEET, "firstrun");
+    const FIRSTRUN_URLS = getSheetValues(FIRSTRUN_SHEET, 2, 1, 1);
+    //Logger.log(FIRSTRUN_URLS);
+
+    // RSSフィードを列挙したfeedurlsシート [feed url][キャッシュシート名][翻訳]
+    const FEED_SHEET = getSheet(SPREADSHEET, "feedurls");
+    if (getSheetValues(FEED_SHEET, 2, 1, 3).length == 0) {
+      Logger.log("feedurlsシートがカラです。");
+      FEED_LIST.getRange(2, 1, 1, 3).setValues([['https://news.yahoo.co.jp/rss/topics/top-picks.xml', 'en', 'Default']]);
+    }
+
+    // feedurlsシートに記載されたURLをまとめて取得する [feed url][キャッシュシート名][翻訳]
+    const FEED_LIST = getSheetValues(FEED_SHEET, 2, 1, 3);
+    Logger.log(FEED_LIST);
+    const FEED_RESPONSES = doFetchAllFeeds(FEED_LIST);
 
     // feedのレスポンスを順番に処理する
     for (let i = 0; i < FEED_RESPONSES.length && !ratelimit_break; i++) {
@@ -77,13 +77,12 @@ function main() {
 
         if (!FIRSTRUN_FLAG && !ratelimit_break) {
           FEED_ENTRIES.forEach(function (entry) {
+            if (ratelimit_break) { return; }
+
             const T_INTERVAL = trigger_interval;// mins 
             const R_WAIT_TIME = (new Date(ratelimit_reset_date) - new Date()) / (60 * 1000);
             const C_RATELIMIT = Math.round(ratelimit_remaining * (R_WAIT_TIME < T_INTERVAL ? 1 : T_INTERVAL / R_WAIT_TIME));
-            if (t_count > C_RATELIMIT) { // レートリミットを超えたら終了フラグを立てる
-              ratelimit_break = true;
-              return;
-            }
+
             const ENTRY_TITLE = getItemTitle(RSSTYPE, entry);
             const ENTRY_URL = getItemUrl(RSSTYPE, entry, FEED_LIST[i][0]);
             const ENTRY_DESCRIPTION = getItemDescription(RSSTYPE, entry);
@@ -100,8 +99,17 @@ function main() {
               ratelimit_reset_date = T_RES_HDS['x-ratelimit-reset'];
               ratelimit_limit = Number(T_RES_HDS['x-ratelimit-limit']);
 
+              if (t_count > C_RATELIMIT) { // レートリミットを超えたら終了フラグを立てる
+                ratelimit_break = true;
+              }
+
               // レスポンスコードに応じて処理
               if (TOOT_RESPONSE.getResponseCode() == 429) {
+                // レートリミット情報をプロパティに保存
+                setScriptProperty('ratelimit_reset_date', ratelimit_reset_date);
+                setScriptProperty('ratelimit_remaining', ratelimit_remaining);
+                setScriptProperty('ratelimit_limit', ratelimit_limit);
+
                 throw new Error("HTTP 429");
               } else if (TOOT_RESPONSE.getResponseCode() != 200) {
                 Utilities.sleep(5 * 1000);
@@ -131,10 +139,6 @@ function main() {
         Logger.log("feed:%s response:%s", FEED_LIST[i][1], FEED_RESPONSES[i].getResponseCode());
       }
     }
-    // レートリミット情報をプロパティに保存
-    setScriptProperty('ratelimit_reset_date', ratelimit_reset_date);
-    setScriptProperty('ratelimit_remaining', ratelimit_remaining);
-    setScriptProperty('ratelimit_limit', ratelimit_limit);
 
     Logger.log("ratelimit_remaining %s, ratelimit_limit %s, ratelimit_reset_date %s", ratelimit_remaining, ratelimit_limit, ratelimit_reset_date);
     Logger.log("終了");

@@ -119,6 +119,11 @@ function main() {
             // RSS情報を配列に保存。後でまとめてSHEETに書き込む
             current_entries_array.push([ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION, new Date().toISOString()]);
           });
+
+          // レートリミット情報をプロパティに保存
+          setScriptProperty('ratelimit_reset_date', ratelimit_reset_date);
+          setScriptProperty('ratelimit_remaining', ratelimit_remaining);
+          setScriptProperty('ratelimit_limit', ratelimit_limit);
         }
         if (FIRSTRUN_FLAG == true) {
           // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録

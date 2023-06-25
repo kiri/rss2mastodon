@@ -47,13 +47,11 @@ function main() {
 
     // RSSフィードを列挙したfeedurlsシート [feed url][キャッシュシート名][翻訳]
     const FEED_SHEET = getSheet(SPREADSHEET, "feedurls");
-    if (getSheetValues(FEED_SHEET, 2, 1, 3).length == 0) {
+    const FEED_LIST = getSheetValues(FEED_SHEET, 2, 1, 3);
+    if (FEED_LIST.length == 0) {
       Logger.log("feedurlsシートがカラです。");
       FEED_LIST.getRange(2, 1, 1, 3).setValues([['https://news.yahoo.co.jp/rss/topics/top-picks.xml', 'en', 'Default']]);
     }
-
-    // feedurlsシートに記載されたURLをまとめて取得する [feed url][キャッシュシート名][翻訳]
-    const FEED_LIST = getSheetValues(FEED_SHEET, 2, 1, 3);
     Logger.log(FEED_LIST);
     const FEED_RESPONSES = doFetchAllFeeds(FEED_LIST);
 
@@ -105,13 +103,14 @@ function main() {
 
               // レスポンスコードに応じて処理
               if (TOOT_RESPONSE.getResponseCode() == 429) {
+                Logger.log("feed:%s code:%s error:%s header:%s", FEED_LIST[i][1], TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), TOOT_RESPONSE.getHeaders());
                 // レートリミット情報をプロパティに保存
                 setScriptProperty('ratelimit_reset_date', ratelimit_reset_date);
                 setScriptProperty('ratelimit_remaining', ratelimit_remaining);
                 setScriptProperty('ratelimit_limit', ratelimit_limit);
-
                 throw new Error("HTTP 429");
               } else if (TOOT_RESPONSE.getResponseCode() != 200) {
+                Logger.log("feed:%s code:%s error:%s header:%s", FEED_LIST[i][1], TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), TOOT_RESPONSE.getHeaders());
                 Utilities.sleep(5 * 1000);
                 return;
               }
@@ -160,14 +159,16 @@ function main() {
 
 function postToot(p) {
   let m = "";
-  m = p.etitle + "\n" + p.econtent + "\n";
+  m = "📰 " + p.etitle + "\n" + p.econtent + "\n";
   if (p.to) {
-    m = m + "\n【翻訳】 " + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, "", p.to) + "\n";
-    // m = m + "\n【翻訳】 " + LanguageApp.translate(p.etitle, "", p.to) + "\n" + LanguageApp.translate(p.econtent, "", p.to) + "\n";
+    m = m + "\n📝 " + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, "", p.to) + "\n";
   }
-
-  m = m.length + p.ftitle.length + 1 + 30 < 500 ? m : m.substring(0, 500 - p.ftitle.length - 1 - 30 - 7) + "(snip)\n";
-  m = m + p.ftitle + " " + p.eurl;
+  const SNIP = "✂\n";
+  const URL_LEN = 30;
+  const MAX_TOOT_LEN = 500;
+  const ICON = "\n🔳 ";
+  m = m.length + ICON.length + p.ftitle.length + 1 + URL_LEN < MAX_TOOT_LEN ? m : m.substring(0, MAX_TOOT_LEN - ICON.length - p.ftitle.length - 1 - URL_LEN - SNIP.length) + SNIP;
+  m = m + ICON + p.ftitle + " " + p.eurl;
 
   const payload = {
     "status": m,

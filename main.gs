@@ -53,7 +53,13 @@ function main() {
       FEED_LIST.getRange(2, 1, 1, 3).setValues([['https://news.yahoo.co.jp/rss/topics/top-picks.xml', 'en', 'Default']]);
     }
     Logger.log(FEED_LIST);
-    const FEED_RESPONSES = doFetchAllFeeds(FEED_LIST);
+
+    let FEED_RESPONSES=[];
+    try {
+      FEED_RESPONSES = doFetchAllFeeds(FEED_LIST);
+    } catch (e) {
+      Logger.log("[名前] %s\n[場所] %s(%s行目)\n[メッセージ] %s\n[StackTrace]\n%s", e.name, e.fileName, e.lineNumber, e.message, e.stack);
+    }
 
     // feedのレスポンスを順番に処理する
     for (let i = 0; i < FEED_RESPONSES.length && !ratelimit_break; i++) {
@@ -159,27 +165,27 @@ function main() {
 
 function postToot(p) {
   let m = "";
-  m = "📰 " + p.etitle + "\n" + p.econtent + "\n";
+  m = '📰 ' + p.etitle + '\n' + p.econtent + '\n';
   if (p.to) {
-    m = m + "\n📝 " + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, "", p.to) + "\n";
+    m = m + '\n📝 ' + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, '', p.to) + '\n';
   }
-  const SNIP = "✂\n";
+  const SNIP = '✂\n';
   const URL_LEN = 30;
   const MAX_TOOT_LEN = 500;
-  const ICON = "\n🔳 ";
+  const ICON = '\n🔳 ';
   m = m.length + ICON.length + p.ftitle.length + 1 + URL_LEN < MAX_TOOT_LEN ? m : m.substring(0, MAX_TOOT_LEN - ICON.length - p.ftitle.length - 1 - URL_LEN - SNIP.length) + SNIP;
   m = m + ICON + p.ftitle + " " + p.eurl;
 
   const payload = {
-    "status": m,
-    "visibility": "private"
+    status: m,
+    visibility: 'private'
   };
   const options = {
-    "method": "post",
-    "payload": JSON.stringify(payload),
-    "headers": { "Authorization": "Bearer " + getScriptProperty('mastodon_accesstoken') },
-    "contentType": "application/json",
-    "muteHttpExceptions": true
+    method: 'post',
+    payload: JSON.stringify(payload),
+    headers: { Authorization: 'Bearer ' + getScriptProperty('mastodon_accesstoken') },
+    contentType: 'application/json',
+    muteHttpExceptions: true
   };
 
   return UrlFetchApp.fetch(getScriptProperty('mastodon_url'), options);

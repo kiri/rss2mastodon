@@ -54,17 +54,17 @@ function main() {
     }
     Logger.log(FEED_LIST);
 
-    let FEED_RESPONSES=[];
+    let feed_responses = [];
     try {
-      FEED_RESPONSES = doFetchAllFeeds(FEED_LIST);
+      feed_responses = doFetchAllFeeds(FEED_LIST);
     } catch (e) {
       Logger.log("[名前] %s\n[場所] %s(%s行目)\n[メッセージ] %s\n[StackTrace]\n%s", e.name, e.fileName, e.lineNumber, e.message, e.stack);
     }
 
     // feedのレスポンスを順番に処理する
-    for (let i = 0; i < FEED_RESPONSES.length && !ratelimit_break; i++) {
-      if (FEED_RESPONSES[i].getResponseCode() == 200) {
-        const XML = XmlService.parse(FEED_RESPONSES[i].getContentText());
+    for (let i = 0; i < feed_responses.length && !ratelimit_break; i++) {
+      if (feed_responses[i].getResponseCode() == 200) {
+        const XML = XmlService.parse(feed_responses[i].getContentText());
         const FEED_TITLE = getFeedTitle(XML);
         const FEED_ENTRIES = getFeedEntries(XML);
         const RSSTYPE = XML.getRootElement().getChildren('channel')[0] ? 1 : 2;
@@ -92,13 +92,18 @@ function main() {
             const ENTRY_DESCRIPTION = getItemDescription(RSSTYPE, entry);
 
             if (FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) {
-              const TOOT_RESPONSE = postToot({ "ftitle": FEED_TITLE, "etitle": ENTRY_TITLE, "econtent": ENTRY_DESCRIPTION, "eurl": ENTRY_URL, "to": FEED_LIST[i][2] });
-              t_count++;
+              let toot_response;
+              try {
+                toot_response = postToot({ "ftitle": FEED_TITLE, "etitle": ENTRY_TITLE, "econtent": ENTRY_DESCRIPTION, "eurl": ENTRY_URL, "to": FEED_LIST[i][2] });
+                t_count++;
+              } catch (e) {
+                Logger.log("[名前] %s\n[場所] %s(%s行目)\n[メッセージ] %s\n[StackTrace]\n%s", e.name, e.fileName, e.lineNumber, e.message, e.stack);
+              }
 
               Logger.log("%s, %s, 今回RL残 %s %, TOOT数 %s, 今回RL残数 %s, RL残 %s %, RL残数 %s, RESET予定時刻 %s, RL %s", FEED_TITLE, ENTRY_TITLE, Math.ceil((C_RATELIMIT - t_count) / C_RATELIMIT * 100), t_count, C_RATELIMIT, Math.round(100 * ratelimit_remaining / ratelimit_limit), ratelimit_remaining, new Date(ratelimit_reset_date).toLocaleString('ja-JP'), ratelimit_limit);
 
               // レートリミット情報
-              const T_RES_HDS = TOOT_RESPONSE.getHeaders();
+              const T_RES_HDS = toot_response.getHeaders();
               ratelimit_remaining = Number(T_RES_HDS['x-ratelimit-remaining']);
               ratelimit_reset_date = T_RES_HDS['x-ratelimit-reset'];
               ratelimit_limit = Number(T_RES_HDS['x-ratelimit-limit']);
@@ -108,15 +113,15 @@ function main() {
               }
 
               // レスポンスコードに応じて処理
-              if (TOOT_RESPONSE.getResponseCode() == 429) {
-                Logger.log("feed:%s code:%s error:%s header:%s", FEED_LIST[i][1], TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), TOOT_RESPONSE.getHeaders());
+              if (toot_response.getResponseCode() == 429) {
+                Logger.log("feed:%s code:%s error:%s header:%s", FEED_LIST[i][1], toot_response.getResponseCode(), toot_response.getContentText(), toot_response.getHeaders());
                 // レートリミット情報をプロパティに保存
                 setScriptProperty('ratelimit_reset_date', ratelimit_reset_date);
                 setScriptProperty('ratelimit_remaining', ratelimit_remaining);
                 setScriptProperty('ratelimit_limit', ratelimit_limit);
                 throw new Error("HTTP 429");
-              } else if (TOOT_RESPONSE.getResponseCode() != 200) {
-                Logger.log("feed:%s code:%s error:%s header:%s", FEED_LIST[i][1], TOOT_RESPONSE.getResponseCode(), TOOT_RESPONSE.getContentText(), TOOT_RESPONSE.getHeaders());
+              } else if (toot_response.getResponseCode() != 200) {
+                Logger.log("feed:%s code:%s error:%s header:%s", FEED_LIST[i][1], toot_response.getResponseCode(), toot_response.getContentText(), toot_response.getHeaders());
                 Utilities.sleep(5 * 1000);
                 return;
               }
@@ -146,7 +151,7 @@ function main() {
         //Logger.log("[キャッシュ数] %s [カレント数] %s", FEED_CACHE_ENTRYTITLES.length, FEED_ENTRIES_ARRAY.length);
       } else {
         //ステータスが200じゃないときの処理
-        Logger.log("feed:%s response:%s", FEED_LIST[i][1], FEED_RESPONSES[i].getResponseCode());
+        Logger.log("feed:%s response:%s", FEED_LIST[i][1], feed_responses[i].getResponseCode());
       }
     }
 

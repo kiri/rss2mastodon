@@ -49,6 +49,7 @@ function main() {
     let feed_responses = [];
     try {
       feed_responses = doFetchAllFeeds(FEED_LIST);
+      Utilities.sleep(1 * 1000);
       Logger.log("feed_responses.length: %s", feed_responses.length);
     } catch (e) {
       // GASのエラーとか
@@ -98,6 +99,7 @@ function main() {
           try {
             toot_response = postToot(value);
             t_count++;
+            Utilities.sleep(1 * 1000);
           } catch (e) {
             // GASのエラーとか
             Logger.log("5:" + e.message);

@@ -91,7 +91,7 @@ function main() {
             const ENTRY_URL = getItemUrl(RSSTYPE, entry, FEED_LIST[i][0]);
             const ENTRY_DESCRIPTION = getItemDescription(RSSTYPE, entry);
 
-            if (FEED_CACHE_ENTRYTITLES.length == 0 || !isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) {
+            if (!isFound(FEED_CACHE_ENTRYTITLES, ENTRY_TITLE)) {
               let toot_response;
               try {
                 toot_response = postToot({ "ftitle": FEED_TITLE, "etitle": ENTRY_TITLE, "econtent": ENTRY_DESCRIPTION, "eurl": ENTRY_URL, "to": FEED_LIST[i][2] });
@@ -272,16 +272,10 @@ function getItemDescription(rsstype, element) {
 
 // 配列から一致する値の有無確認
 function isFound(array, data) {
-  return array.some(v => v.includes(data));
-  /*
-  let s_time = new Date();
-  for (let i = 0; i < array.length; i++) {
-    if (array[i].toString() === data) {
-      return true;
-    }
+  if (array.length == 0) {
+    return false;
   }
-  return false;
-*/
+  return array.some(v => v.includes(data));
 }
 
 // urlからFQDNを取得

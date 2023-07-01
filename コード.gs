@@ -49,6 +49,7 @@ function main() {
     let feed_responses = [];
     try {
       feed_responses = doFetchAllFeeds(FEED_LIST);
+      Logger.log("feed_responses.length: %s", feed_responses.length);
     } catch (e) {
       // GASのエラーとか
       Logger.log("1:" + e.message);
@@ -75,6 +76,7 @@ function main() {
         });
       }
     });
+    Logger.log("rss_entries.length: %s", rss_entries.length);
 
     // TootしたRSS情報を記録する配列
     let current_entries_array = [];
@@ -123,6 +125,7 @@ function main() {
         }
       }
     });
+    Logger.log("current_entries_array.length: %s", current_entries_array.length);
 
     // レートリミット情報をプロパティに保存
     setScriptProperty('ratelimit_reset_date', ratelimit_reset_date);
@@ -291,7 +294,7 @@ function getSheetValues(ss, row, col, width) {
 // 初回実行？
 function isFirstrun(feed_url, firstrun_urls_array) {
   if (!isFound(firstrun_urls_array, feed_url)) {
-    Logger.log("初回実行 " + feed_url);
+    //Logger.log("初回実行 " + feed_url);
     return true;
   }
   return false;
@@ -301,7 +304,7 @@ function isFirstrun(feed_url, firstrun_urls_array) {
 function addFirstrunSheet(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
   // 初回実行記録シートにURLが含まれてなかったら初回実行フラグを立ててシートに記録
   if (!isFound(firstrun_urls_array, feed_url)) {
-    Logger.log("初回実行シートにFEEDを追加 " + feed_url);
+    //Logger.log("初回実行シートにFEEDを追加 " + feed_url);
     // FEED＿URLを配列firstrun_urlsに追加してfirstrun_sheetに書き込む
     firstrun_urls_array.push(feed_url);
     if (firstrun_urls_array.length > 0) {

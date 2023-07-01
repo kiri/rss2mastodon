@@ -54,6 +54,7 @@ function main() {
     } catch (e) {
       // GASのエラーとか
       Logger.log("1:" + e.message);
+      return;
     }
 
     // feedのレスポンスから、RSSエントリを全部1つの配列に入れる。

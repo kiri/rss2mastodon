@@ -75,7 +75,8 @@ function getRSSEntries() {
       });
     }
   });
-  return rss_entries;
+  // シャッフルして返す
+  return shuffleArray(rss_entries);
 }
 
 function Toot(rss_entries) {
@@ -305,6 +306,17 @@ function getSheetValues(ss, row, col, width) {
     return ss.getRange(row, col, ss.getLastRow() - 1, width).getValues();
   }
   return [];
+}
+
+function shuffleArray(array) {
+  const cloneArray = [...array]
+  for (let i = cloneArray.length - 1; i >= 0; i--) {
+    let rand = Math.floor(Math.random() * (i + 1))
+    let tmpStorage = cloneArray[i]
+    cloneArray[i] = cloneArray[rand]
+    cloneArray[rand] = tmpStorage
+  }
+  return cloneArray
 }
 
 // 初回実行？

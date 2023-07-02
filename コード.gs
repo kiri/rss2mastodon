@@ -2,8 +2,8 @@
  RSSをmastodonへtoot
 */
 const NS_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
-//const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
 const SPREADSHEET = SpreadsheetApp.getActiveSpreadsheet();
+//const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
 
 function main() {
   // スクリプトプロパティがなかったとき用の初期設定  
@@ -22,9 +22,8 @@ function main() {
   const LOCK = LockService.getDocumentLock();
   try {
     LOCK.waitLock(0);
-    doMastodon(getRSSEntries());
+    doToot(getRSSEntries());
   } catch (e) {
-    // 
     Logger.log("8:" + e.message);
   } finally {
     LOCK.releaseLock();
@@ -32,7 +31,6 @@ function main() {
 }
 
 function getRSSEntries() {
-  // このあたりはFeedを収集する処理
   // RSSフィードを列挙したfeedurlsシート [feed url][翻訳]
   const FEED_SHEET = getSheet(SPREADSHEET, "feedurls");
   const FEED_LIST = getSheetValues(FEED_SHEET, 2, 1, 2);
@@ -59,9 +57,7 @@ function getRSSEntries() {
     feed_list.forEach(function (value, index, array) {
       feed_responses = feed_responses.concat(getAllFeeds(value));
       Utilities.sleep(value.length * 1000);
-      Logger.log("value.length: %s", value.length);
     });
-    Logger.log("feed_responses.length: %s", feed_responses.length);
   } catch (e) {
     // GASのエラーとか
     Logger.log("1:" + e.message);
@@ -90,13 +86,10 @@ function getRSSEntries() {
       });
     }
   });
-  Logger.log("rss_entries.length: %s", rss_entries.length);
-
   return rss_entries;
 }
 
-function doMastodon(rss_entries) {
-  // このあたりからマストドンへTootする処理
+function doToot(rss_entries) {
   // レートリミット超えによる中断・スキップ判定用
   let ratelimit_break = false;
   let t_count = 0;
@@ -119,7 +112,6 @@ function doMastodon(rss_entries) {
   const FEED_CACHE_SHEET = getSheet(SPREADSHEET, 'cache');
   const FEED_CACHE_ENTRIES = getSheetValues(FEED_CACHE_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
   let feed_cache_entrytitles = getSheetValues(FEED_CACHE_SHEET, 2, 1, 1); // タイトルのみ取得（A2(2,1)を起点に最終データ行までの1列分) 
-  Logger.log("feed_cache_entrytitles.length: %s", feed_cache_entrytitles.length);
 
   // 初回実行記録シートからA2から最終行まで幅1列を取得
   const FIRSTRUN_SHEET = getSheet(SPREADSHEET, "firstrun");
@@ -134,7 +126,7 @@ function doMastodon(rss_entries) {
 
         let toot_response;
         try {
-          toot_response = postToot(value);
+          toot_response = doPost(value);
           t_count++;
           Logger.log("5-1:%s %s", t_count, value);
           Utilities.sleep(1 * 1000);
@@ -167,8 +159,6 @@ function doMastodon(rss_entries) {
       }
     }
   });
-  Logger.log("feed_cache_entrytitles.length: %s", feed_cache_entrytitles.length);
-  Logger.log("current_entries_array.length: %s", current_entries_array.length);
 
   // レートリミット情報をプロパティに保存
   setScriptProperty('ratelimit_reset_date', ratelimit_reset_date);
@@ -192,7 +182,7 @@ function doMastodon(rss_entries) {
   SpreadsheetApp.flush();
 }
 
-function postToot(p) {
+function doPost(p) {
   let m = "";
   m = '📰 ' + p.etitle + '\n' + p.econtent + '\n';
   if (p.to) {

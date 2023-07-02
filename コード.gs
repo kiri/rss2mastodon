@@ -46,14 +46,32 @@ function main() {
       FEED_LIST.getRange(2, 1, 1, 2).setValues([['https://example.com/rss', 'en']]);
     }
 
+    let feed_list = [];
+    {
+      let temp_feed_list = [];
+      FEED_LIST.forEach(function (value, index, array) {
+        temp_feed_list.push(value);
+        if ((index + 1) % 10 == 0) {
+          feed_list.push(temp_feed_list);
+          temp_feed_list = [];
+        }
+      });
+      feed_list.push(temp_feed_list);
+      temp_feed_list = [];
+    }
+
     let feed_responses = [];
     try {
-      feed_responses = doFetchAllFeeds(FEED_LIST);
-      Utilities.sleep(1 * 1000);
+      feed_list.forEach(function (value, index, array) {
+        feed_responses = feed_responses.concat(doFetchAllFeeds(value));
+        Utilities.sleep(value.length * 1000);
+        Logger.log("value.length: %s", value.length);
+      });
       Logger.log("feed_responses.length: %s", feed_responses.length);
     } catch (e) {
       // GASのエラーとか
       Logger.log("1:" + e.message);
+      Logger.log("1-1:" + FEED_LIST);
       return;
     }
 
@@ -100,6 +118,7 @@ function main() {
           try {
             toot_response = postToot(value);
             t_count++;
+            Logger.log("5-1:%s %s", t_count, value);
             Utilities.sleep(1 * 1000);
           } catch (e) {
             // GASのエラーとか

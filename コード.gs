@@ -6,25 +6,14 @@ const SPREADSHEET = SpreadsheetApp.getActiveSpreadsheet();
 //const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
 
 function main() {
-  // スクリプトプロパティがなかったとき用の初期設定  
-  if (!getScriptProperty('trigger_interval') || !getScriptProperty('cache_max_age') || !getScriptProperty('ratelimit_remaining') || !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
-    setScriptProperty('trigger_interval', 10); // minuites 
-    setScriptProperty('cache_max_age', 120); // minuites
-    setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
-    setScriptProperty('ratelimit_remaining', 300);
-    setScriptProperty('ratelimit_limit', 300);
-  }
-  if (new Date(getScriptProperty('ratelimit_reset_date')) <= new Date()) {
-    setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
-    setScriptProperty('ratelimit_remaining', 300);
-  }
+  initScriptProperty();
 
   const LOCK = LockService.getDocumentLock();
   try {
     LOCK.waitLock(0);
-    doToot(getRSSEntries());
+    Toot(getRSSEntries());
   } catch (e) {
-    Logger.log("8:" + e.message);
+    Logger.log("error main():" + e.message);
   } finally {
     LOCK.releaseLock();
   }
@@ -60,7 +49,7 @@ function getRSSEntries() {
     });
   } catch (e) {
     // GASのエラーとか
-    Logger.log("1:" + e.message);
+    Logger.log("error getRSSEntries():" + e.message);
     Logger.log("1-1:" + FEED_LIST);
     return;
   }
@@ -89,7 +78,7 @@ function getRSSEntries() {
   return rss_entries;
 }
 
-function doToot(rss_entries) {
+function Toot(rss_entries) {
   // レートリミット超えによる中断・スキップ判定用
   let ratelimit_break = false;
   let t_count = 0;
@@ -128,11 +117,11 @@ function doToot(rss_entries) {
         try {
           toot_response = doPost(value);
           t_count++;
-          Logger.log("5-1:%s %s", t_count, value);
+          Logger.log("info Toot():%s %s", t_count, value);
           Utilities.sleep(1 * 1000);
         } catch (e) {
           // GASのエラーとか
-          Logger.log("5:" + e.message);
+          Logger.log("error Toot():" + e.message);
           Utilities.sleep(5 * 1000);
           return;
         }
@@ -347,6 +336,20 @@ function addFirstrunSheet(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
   return;
 }
 
+// スクリプトプロパティがなかったとき用の初期設定
+function initScriptProperty() {
+  if (!getScriptProperty('trigger_interval') || !getScriptProperty('cache_max_age') || !getScriptProperty('ratelimit_remaining') || !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
+    setScriptProperty('trigger_interval', 10); // minuites 
+    setScriptProperty('cache_max_age', 120); // minuites
+    setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
+    setScriptProperty('ratelimit_remaining', 300);
+    setScriptProperty('ratelimit_limit', 300);
+  }
+  if (new Date(getScriptProperty('ratelimit_reset_date')) <= new Date()) {
+    setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
+    setScriptProperty('ratelimit_remaining', 300);
+  }
+}
 // スクリプトプロパティ取得
 function getScriptProperty(key) {
   return PropertiesService.getScriptProperties().getProperty(key);

@@ -2,6 +2,7 @@
  RSSをmastodonへtoot
 */
 const NS_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
+const NS_DC = XmlService.getNamespace("http://purl.org/dc/elements/1.1/");
 const SPREADSHEET = SpreadsheetApp.getActiveSpreadsheet();
 //const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
 
@@ -56,6 +57,9 @@ function getRSSEntries() {
 
   // feedのレスポンスから、RSSエントリを全部1つの配列に入れる。
   let rss_entries = [];
+  let some_mins_ago = new Date();
+  some_mins_ago.setMinutes(some_mins_ago.getMinutes() - Number(getScriptProperty('cache_max_age')));// 古さの許容範囲
+
   feed_responses.forEach(function (value, index, array) {
     array[index].feed_url = FEED_LIST[index][0];
     array[index].translate_to = FEED_LIST[index][1];
@@ -63,20 +67,24 @@ function getRSSEntries() {
     if (value.getResponseCode() == 200) {
       // RSSエントリを取り出す
       const XML = XmlService.parse(value.getContentText());
-      const FEED_TITLE = getFeedTitle(XML);
-      const FEED_ENTRIES = getFeedEntries(XML);
-      const RSSTYPE = XML.getRootElement().getChildren('channel')[0] ? 1 : 2;
+      const RSSTYPE = XML.getRootElement().getChildren('channel')[0] ? 1 : 2; // 1: RSS2.0, 2: RSS1.0
+      const FEED_TITLE = getFeedTitle(RSSTYPE, XML);
+      const FEED_ENTRIES = getFeedEntries(RSSTYPE, XML);
 
       FEED_ENTRIES.forEach(function (entry) {
         const ENTRY_TITLE = getItemTitle(RSSTYPE, entry);
         const ENTRY_URL = getItemUrl(RSSTYPE, entry, entry.feed_url);
         const ENTRY_DESCRIPTION = getItemDescription(RSSTYPE, entry);
-        rss_entries.push({ ftitle: FEED_TITLE, etitle: ENTRY_TITLE, econtent: ENTRY_DESCRIPTION, eurl: ENTRY_URL, to: value.translate_to, feed_url: value.feed_url });
+        const ENTRY_DATE = new Date(getItemDate(RSSTYPE, entry));
+        if (some_mins_ago < ENTRY_DATE) {
+          rss_entries.push({ ftitle: FEED_TITLE, etitle: ENTRY_TITLE, econtent: ENTRY_DESCRIPTION, eurl: ENTRY_URL, to: value.translate_to, feed_url: value.feed_url, edate: ENTRY_DATE });
+        } else {
+          Logger.log(ENTRY_DATE + "is Old. [" + FEED_TITLE + "/" + ENTRY_TITLE + "]");
+        }
       });
     }
   });
-  // シャッフルして返す
-  return shuffleArray(rss_entries);
+  return rss_entries.sort((a,b) => a.edate - b.edate);
 }
 
 function Toot(rss_entries) {
@@ -141,7 +149,7 @@ function Toot(rss_entries) {
         feed_cache_entrytitles.push([value.etitle]);
       }
       // Tootした/するはずだったRSS情報を配列に保存。後でまとめてcacheに書き込む
-      current_entries_array.push([value.etitle, value.eurl, value.econtent, new Date().toISOString()]);
+      current_entries_array.push([value.etitle, value.eurl, value.econtent, value.edate.toISOString()]);
 
       if (isFirstrun(value.feed_url, FIRSTRUN_URLS)) {
         // FirstRunのfeed urlを保存
@@ -216,20 +224,30 @@ function getAllFeeds(feedlist) {
   return UrlFetchApp.fetchAll(requests);
 }
 
-function getFeedTitle(xml) {
-  if (xml.getRootElement().getChildren('channel')[0]) {
-    return xml.getRootElement().getChildren('channel')[0].getChildText('title');
-  } else {
-    return xml.getRootElement().getChildren('channel', NS_RSS)[0].getChildText('title', NS_RSS);
+function getFeedTitle(rsstype, xml) {
+  let feedtitle = "";
+  switch (rsstype) {
+    case 1:
+      feedtitle = xml.getRootElement().getChildren('channel')[0].getChildText('title');
+      break;
+    case 2:
+      feedtitle = xml.getRootElement().getChildren('channel', NS_RSS)[0].getChildText('title', NS_RSS);
+      break;
   }
+  return feedtitle;
 }
 
-function getFeedEntries(xml) {
-  if (xml.getRootElement().getChildren('channel')[0]) {
-    return xml.getRootElement().getChildren('channel')[0].getChildren('item');
-  } else {
-    return xml.getRootElement().getChildren('item', NS_RSS);
+function getFeedEntries(rsstype, xml) {
+  let feedentries = [];
+  switch (rsstype) {
+    case 1:
+      feedentries = xml.getRootElement().getChildren('channel')[0].getChildren('item');
+      break;
+    case 2:
+      feedentries = xml.getRootElement().getChildren('item', NS_RSS);
+      break;
   }
+  return feedentries;
 }
 
 function getItemTitle(rsstype, element) {
@@ -272,6 +290,19 @@ function getItemDescription(rsstype, element) {
       break;
   }
   return description;
+}
+
+function getItemDate(rsstype, element) {
+  let date = "";
+  switch (rsstype) {
+    case 1:
+      date = element.getChildText('pubDate');
+      break;
+    case 2:
+      date = element.getChildText('date', NS_DC);
+      break;
+  }
+  return date;
 }
 
 // 配列から一致する値の有無確認

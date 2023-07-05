@@ -84,7 +84,7 @@ function getRSSEntries() {
       });
     }
   });
-  return rss_entries.sort((a,b) => a.edate - b.edate);
+  return rss_entries.sort((a, b) => a.edate - b.edate);
 }
 
 function Toot(rss_entries) {
@@ -190,8 +190,9 @@ function doPost(p) {
   const URL_LEN = 30;
   const MAX_TOOT_LEN = 500;
   const ICON = '\n🔳 ';
-  m = m.length + ICON.length + p.ftitle.length + 1 + URL_LEN < MAX_TOOT_LEN ? m : m.substring(0, MAX_TOOT_LEN - ICON.length - p.ftitle.length - 1 - URL_LEN - SNIP.length) + SNIP;
-  m = m + ICON + p.ftitle + " " + p.eurl;
+  const DATESTRING = "(" + p.edate.toLocaleTimeString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" }) + ")";
+  m = m.length + ICON.length + DATESTRING.length + p.ftitle.length + 1 + URL_LEN < MAX_TOOT_LEN ? m : m.substring(0, MAX_TOOT_LEN - ICON.length - p.ftitle.length - DATESTRING.length - 1 - URL_LEN - SNIP.length) + SNIP;
+  m = m + ICON + p.ftitle + DATESTRING + " " + p.eurl;
 
   const payload = {
     status: m,

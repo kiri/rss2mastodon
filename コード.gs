@@ -58,7 +58,7 @@ function getRSSEntries() {
   // feedのレスポンスから、RSSエントリを全部1つの配列に入れる。
   let rss_entries = [];
   let some_mins_ago = new Date();
-  some_mins_ago.setMinutes(some_mins_ago.getMinutes() - Number(getScriptProperty('cache_max_age')));// 古さの許容範囲
+  some_mins_ago.setMinutes(some_mins_ago.getMinutes() - Number(getScriptProperty('article_max_age')));// 古さの許容範囲
 
   feed_responses.forEach(function (value, index, array) {
     array[index].feed_url = FEED_LIST[index][0];
@@ -149,7 +149,7 @@ function Toot(rss_entries) {
         feed_cache_entrytitles.push([value.etitle]);
       }
       // Tootした/するはずだったRSS情報を配列に保存。後でまとめてcacheに書き込む
-      current_entries_array.push([value.etitle, value.eurl, value.econtent, value.edate.toISOString()]);
+      current_entries_array.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);
 
       if (isFirstrun(value.feed_url, FIRSTRUN_URLS)) {
         // FirstRunのfeed urlを保存
@@ -382,9 +382,10 @@ function addFirstrunSheet(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
 
 // スクリプトプロパティがなかったとき用の初期設定
 function initScriptProperty() {
-  if (!getScriptProperty('trigger_interval') || !getScriptProperty('cache_max_age') || !getScriptProperty('ratelimit_remaining') || !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
+  if (!getScriptProperty('trigger_interval') || !getScriptProperty('cache_max_age') || !getScriptProperty('article_max_age') || !getScriptProperty('ratelimit_remaining') || !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
     setScriptProperty('trigger_interval', 10); // minuites 
     setScriptProperty('cache_max_age', 120); // minuites
+    setScriptProperty('article_max_age', 720); // minuites
     setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
     setScriptProperty('ratelimit_remaining', 300);
     setScriptProperty('ratelimit_limit', 300);

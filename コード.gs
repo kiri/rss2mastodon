@@ -109,7 +109,7 @@ function Toot(rss_entries) {
   // キャッシュの取得
   const FEED_CACHE_SHEET = getSheet(SPREADSHEET, 'cache');
   const FEED_CACHE_ENTRIES = getSheetValues(FEED_CACHE_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
-  let feed_cache_entrytitles = getSheetValues(FEED_CACHE_SHEET, 2, 1, 1); // タイトルのみ取得（A2(2,1)を起点に最終データ行までの1列分) 
+  let feed_cache_url = getSheetValues(FEED_CACHE_SHEET, 2, 2, 1); // タイトルのみ取得（B2(2:2,B:2)を起点に最終データ行までの1列分) 
 
   // 初回実行記録シートからA2から最終行まで幅1列を取得
   const FIRSTRUN_SHEET = getSheet(SPREADSHEET, "firstrun");
@@ -117,7 +117,7 @@ function Toot(rss_entries) {
 
   rss_entries.forEach(function (value, index, array) {
     if (!ratelimit_break) {
-      if (!isFirstrun(value.feed_url, FIRSTRUN_URLS) && !isFound(feed_cache_entrytitles, value.etitle)) {
+      if (!isFirstrun(value.feed_url, FIRSTRUN_URLS) && !isFound(feed_cache_url, value.eurl)) {
         const T_INTERVAL = trigger_interval;// mins 
         const R_WAIT_TIME = (new Date(ratelimit_reset_date) - new Date()) / (60 * 1000);
         const C_RATELIMIT = Math.round(ratelimit_remaining * (R_WAIT_TIME < T_INTERVAL ? 1 : T_INTERVAL / R_WAIT_TIME));
@@ -146,7 +146,7 @@ function Toot(rss_entries) {
           return;
         }
         // TootしたものをToot済みのものとして足す
-        feed_cache_entrytitles.push([value.etitle]);
+        feed_cache_url.push([value.eurl]);
       }
       // Tootした/するはずだったRSS情報を配列に保存。後でまとめてcacheに書き込む
       current_entries_array.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);
@@ -175,7 +175,7 @@ function Toot(rss_entries) {
   let merged_entries_array = current_entries_array.concat(FEED_CACHE_ENTRIES.filter(function (item) { return new Date(item[3]) > some_mins_ago; }));
   FEED_CACHE_SHEET.clear();
   if (merged_entries_array.length > 0) {
-    FEED_CACHE_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array).removeDuplicates([1]);
+    FEED_CACHE_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array).removeDuplicates([2]);
   }
   SpreadsheetApp.flush();
 }

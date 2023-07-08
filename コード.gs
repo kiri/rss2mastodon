@@ -98,7 +98,7 @@ function Toot(rss_entries) {
 
   // スクリプトプロパティを取得
   let trigger_interval = Number(getScriptProperty('trigger_interval'));
-  let cache_max_age = Number(getScriptProperty('cache_max_age'));
+  let store_max_age = Number(getScriptProperty('store_max_age'));
   let ratelimit_reset_date = getScriptProperty('ratelimit_reset_date');
   let ratelimit_remaining = Number(getScriptProperty('ratelimit_remaining'));
   let ratelimit_limit = Number(getScriptProperty('ratelimit_limit'));
@@ -171,7 +171,7 @@ function Toot(rss_entries) {
 
   // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
   let some_mins_ago = new Date();
-  some_mins_ago.setMinutes(some_mins_ago.getMinutes() - cache_max_age);
+  some_mins_ago.setMinutes(some_mins_ago.getMinutes() - store_max_age);
   let merged_entries_array = current_entries_array.concat(FEED_STORE_ENTRIES.filter(function (item) { return new Date(item[3]) > some_mins_ago; }));
   FEED_STORE_SHEET.clear();
   if (merged_entries_array.length > 0) {
@@ -382,9 +382,9 @@ function addFirstrunSheet(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
 
 // スクリプトプロパティがなかったとき用の初期設定
 function initScriptProperty() {
-  if (!getScriptProperty('trigger_interval') || !getScriptProperty('cache_max_age') || !getScriptProperty('article_max_age') || !getScriptProperty('ratelimit_remaining') || !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
+  if (!getScriptProperty('trigger_interval') || !getScriptProperty('store_max_age') || !getScriptProperty('article_max_age') || !getScriptProperty('ratelimit_remaining') || !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
     setScriptProperty('trigger_interval', 10); // minuites 
-    setScriptProperty('cache_max_age', 120); // minuites
+    setScriptProperty('store_max_age', 120); // minuites
     setScriptProperty('article_max_age', 720); // minuites
     setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
     setScriptProperty('ratelimit_remaining', 300);

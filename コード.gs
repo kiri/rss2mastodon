@@ -384,8 +384,8 @@ function addFirstrunSheet(feed_url, firstrun_urls_array, firstrun_urls_sheet) {
 function initScriptProperty() {
   if (!getScriptProperty('trigger_interval') || !getScriptProperty('store_max_age') || !getScriptProperty('article_max_age') || !getScriptProperty('ratelimit_remaining') || !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
     setScriptProperty('trigger_interval', 10); // minuites 
-    setScriptProperty('store_max_age', 120); // minuites
-    setScriptProperty('article_max_age', 720); // minuites
+    setScriptProperty('store_max_age', 720); // minuites
+    setScriptProperty('article_max_age', 120); // minuites
     setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
     setScriptProperty('ratelimit_remaining', 300);
     setScriptProperty('ratelimit_limit', 300);

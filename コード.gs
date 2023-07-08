@@ -79,7 +79,7 @@ function getRSSEntries() {
         if (some_mins_ago < ENTRY_DATE) {
           rss_entries.push({ ftitle: FEED_TITLE, etitle: ENTRY_TITLE, econtent: ENTRY_DESCRIPTION, eurl: ENTRY_URL, to: value.translate_to, feed_url: value.feed_url, edate: ENTRY_DATE });
         } else {
-          Logger.log(ENTRY_DATE + "is Old. [" + FEED_TITLE + "/" + ENTRY_TITLE + "]");
+          //Logger.log(ENTRY_DATE + "is Old. [" + FEED_TITLE + "/" + ENTRY_TITLE + "]");
         }
       });
     }
@@ -175,7 +175,8 @@ function Toot(rss_entries) {
   let merged_entries_array = current_entries_array.concat(FEED_STORE_ENTRIES.filter(function (item) { return new Date(item[3]) > some_mins_ago; }));
   FEED_STORE_SHEET.clear();
   if (merged_entries_array.length > 0) {
-    FEED_STORE_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array).removeDuplicates([2]);
+    //merged_entries_array.sort((a, b) => new Date(b[3]) - new Date(a[3]));
+    FEED_STORE_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array.sort((a, b) => new Date(b[3]) - new Date(a[3]))).removeDuplicates([2]);
   }
   SpreadsheetApp.flush();
 }

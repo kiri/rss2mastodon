@@ -114,7 +114,9 @@ function Toot(rss_entries) {
   // 初回実行記録シートからA2から最終行まで幅1列を取得
   const FIRSTRUN_SHEET = getSheet(SPREADSHEET, "firstrun");
   const FIRSTRUN_URLS = getSheetValues(FIRSTRUN_SHEET, 2, 1, 1);
-
+  // すでにToot済みのはこの時刻
+  const TIMESTAMP = new Date().toString();
+  
   rss_entries.forEach(function (value, index, array) {
     if (!ratelimit_break) {
       if (!isFirstrun(value.feed_url, FIRSTRUN_URLS) && !isFound(feed_store_url, value.eurl)) {
@@ -147,9 +149,12 @@ function Toot(rss_entries) {
         }
         // TootしたものをToot済みのものとして足す
         feed_store_url.push([value.eurl]);
+
+        // Tootした/するはずだったRSS情報を配列に保存。後でまとめてstoreシートに書き込む
+        current_entries_array.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);
+      } else {
+        current_entries_array.push([value.etitle, value.eurl, value.econtent, TIMESTAMP]);
       }
-      // Tootした/するはずだったRSS情報を配列に保存。後でまとめてstoreシートに書き込む
-      current_entries_array.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);
 
       if (isFirstrun(value.feed_url, FIRSTRUN_URLS)) {
         // FirstRunのfeed urlを保存

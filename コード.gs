@@ -28,24 +28,24 @@ function getRSSEntries() {
     FEED_URL_LIST.getRange(2, 1, 1, 2).setValues([['https://example.com/rss', 'en']]);
   }
 
-  let feed_list = [];
+  let feed_url_list = [];
   {
-    let temp_feed_list = [];
+    let temp_feed_url_list = [];
     FEED_URL_LIST.forEach(function (value, index, array) {
-      temp_feed_list.push(value);
+      temp_feed_url_list.push(value);
       if ((index + 1) % 10 == 0) {
-        feed_list.push(temp_feed_list);
-        temp_feed_list = [];
+        feed_url_list.push(temp_feed_url_list);
+        temp_feed_url_list = [];
       }
     });
-    feed_list.push(temp_feed_list);
-    temp_feed_list = [];
+    feed_url_list.push(temp_feed_url_list);
+    temp_feed_url_list = [];
   }
 
-  let feed_responses = [];
+  let responses = [];
   try {
-    feed_list.forEach(function (value, index, array) {
-      feed_responses = feed_responses.concat(getAllFeeds(value));
+    feed_url_list.forEach(function (value, index, array) {
+      responses = responses.concat(fetchFeed(value));
       Utilities.sleep(value.length * 1000);
     });
   } catch (e) {
@@ -60,7 +60,7 @@ function getRSSEntries() {
   let some_mins_ago = new Date();
   some_mins_ago.setMinutes(some_mins_ago.getMinutes() - Number(getScriptProperty('article_max_age')));// 古さの許容範囲
 
-  feed_responses.forEach(function (value, index, array) {
+  responses.forEach(function (value, index, array) {
     array[index].feed_url = FEED_URL_LIST[index][0];
     array[index].translate_to = FEED_URL_LIST[index][1];
 
@@ -124,9 +124,9 @@ function Toot(rss_entries) {
         const R_WAIT_TIME = (new Date(ratelimit_reset_date) - new Date()) / (60 * 1000);
         const C_RATELIMIT = Math.round(ratelimit_remaining * (R_WAIT_TIME < T_INTERVAL ? 1 : T_INTERVAL / R_WAIT_TIME));
 
-        let toot_response;
+        let response;
         try {
-          toot_response = doPost(value);
+          response = doPost(value);
           t_count++;
           Logger.log("info Toot():%s %s", t_count, value);
           Utilities.sleep(1 * 1000);
@@ -137,13 +137,13 @@ function Toot(rss_entries) {
           return;
         }
         // レートリミット情報
-        const T_RES_HDS = toot_response.getHeaders();
+        const T_RES_HDS = response.getHeaders();
         ratelimit_remaining = Number(T_RES_HDS['x-ratelimit-remaining']);
         ratelimit_reset_date = T_RES_HDS['x-ratelimit-reset'];
         ratelimit_limit = Number(T_RES_HDS['x-ratelimit-limit']);
-        if (t_count > C_RATELIMIT || toot_response.getResponseCode() == 429) { // レートリミットを超え or 429 なら終了フラグを立てる
+        if (t_count > C_RATELIMIT || response.getResponseCode() == 429) { // レートリミットを超え or 429 なら終了フラグを立てる
           ratelimit_break = true;
-        } else if (toot_response.getResponseCode() != 200) {
+        } else if (response.getResponseCode() != 200) {
           Utilities.sleep(5 * 1000);
           return;
         }
@@ -215,12 +215,12 @@ function doPost(p) {
   return UrlFetchApp.fetch(getScriptProperty('mastodon_url'), options);
 }
 
-function getAllFeeds(feedlist) {
+function fetchFeed(feed_url_list) {
   let requests = [];
 
-  for (let i = 0; i < feedlist.length; i++) {
+  for (let i = 0; i < feed_url_list.length; i++) {
     let param = {
-      url: feedlist[i][0],
+      url: feed_url_list[i][0],
       method: 'get',
       followRedirects: false,
       muteHttpExceptions: true

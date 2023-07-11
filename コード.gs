@@ -3,7 +3,7 @@
 */
 const NS_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
 const NS_DC = XmlService.getNamespace("http://purl.org/dc/elements/1.1/");
-const SPREADSHEET = SpreadsheetApp.getActiveSpreadsheet();
+const SPREAD_SHEET = SpreadsheetApp.getActiveSpreadsheet();
 //const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
 
 function main() {
@@ -22,16 +22,16 @@ function main() {
 
 function getRSSEntries() {
   // RSSフィードを列挙したfeedurlsシート [feed url][翻訳]
-  const FEED_SHEET = getSheet(SPREADSHEET, "feedurls");
-  const FEED_LIST = getSheetValues(FEED_SHEET, 2, 1, 2);
-  if (FEED_LIST.length == 0) {
-    FEED_LIST.getRange(2, 1, 1, 2).setValues([['https://example.com/rss', 'en']]);
+  const FEED_URL_SHEET = getSheet(SPREAD_SHEET, "feedurls");
+  const FEED_URL_LIST = getSheetValues(FEED_URL_SHEET, 2, 1, 2);
+  if (FEED_URL_LIST.length == 0) {
+    FEED_URL_LIST.getRange(2, 1, 1, 2).setValues([['https://example.com/rss', 'en']]);
   }
 
   let feed_list = [];
   {
     let temp_feed_list = [];
-    FEED_LIST.forEach(function (value, index, array) {
+    FEED_URL_LIST.forEach(function (value, index, array) {
       temp_feed_list.push(value);
       if ((index + 1) % 10 == 0) {
         feed_list.push(temp_feed_list);
@@ -51,7 +51,7 @@ function getRSSEntries() {
   } catch (e) {
     // GASのエラーとか
     Logger.log("error getRSSEntries():" + e.message);
-    Logger.log("1-1:" + FEED_LIST);
+    Logger.log("1-1:" + FEED_URL_LIST);
     return;
   }
 
@@ -61,8 +61,8 @@ function getRSSEntries() {
   some_mins_ago.setMinutes(some_mins_ago.getMinutes() - Number(getScriptProperty('article_max_age')));// 古さの許容範囲
 
   feed_responses.forEach(function (value, index, array) {
-    array[index].feed_url = FEED_LIST[index][0];
-    array[index].translate_to = FEED_LIST[index][1];
+    array[index].feed_url = FEED_URL_LIST[index][0];
+    array[index].translate_to = FEED_URL_LIST[index][1];
 
     if (value.getResponseCode() == 200) {
       // RSSエントリを取り出す
@@ -107,12 +107,12 @@ function Toot(rss_entries) {
   }
 
   // キャッシュの取得
-  const FEED_STORE_SHEET = getSheet(SPREADSHEET, 'store');
+  const FEED_STORE_SHEET = getSheet(SPREAD_SHEET, 'store');
   const FEED_STORE_ENTRIES = getSheetValues(FEED_STORE_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
   let feed_store_url = getSheetValues(FEED_STORE_SHEET, 2, 2, 1); // タイトルのみ取得（B2(2:2,B:2)を起点に最終データ行までの1列分) 
 
   // 初回実行記録シートからA2から最終行まで幅1列を取得
-  const FIRSTRUN_SHEET = getSheet(SPREADSHEET, "firstrun");
+  const FIRSTRUN_SHEET = getSheet(SPREAD_SHEET, "firstrun");
   const FIRSTRUN_URLS = getSheetValues(FIRSTRUN_SHEET, 2, 1, 1);
   // すでにToot済みのはこの時刻
   const TIMESTAMP = new Date().toString();

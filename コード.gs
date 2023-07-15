@@ -30,24 +30,24 @@ function fetchRSSFeeds() {
 
   Logger.log(RSSFEEDS);
 
-  let feed_url_list = [];
+  let rssfeed_urls_list = [];
   {
-    let temp_feed_url_list = [];
+    let temp_rssfeed_urls_list = [];
     RSSFEEDS.forEach(function (value, index, array) {
-      temp_feed_url_list.push(value);
+      temp_rssfeed_urls_list.push(value);
       if ((index + 1) % 10 == 0) {
-        feed_url_list.push(temp_feed_url_list);
-        temp_feed_url_list = [];
+        rssfeed_urls_list.push(temp_rssfeed_urls_list);
+        temp_rssfeed_urls_list = [];
       }
     });
-    feed_url_list.push(temp_feed_url_list);
-    temp_feed_url_list = [];
+    rssfeed_urls_list.push(temp_rssfeed_urls_list);
+    temp_rssfeed_urls_list = [];
   }
 
   let responses = [];
   try {
-    feed_url_list.forEach(function (value, index, array) {
-      responses = responses.concat(fetchFeed(value));
+    rssfeed_urls_list.forEach(function (value, index, array) {
+      responses = responses.concat(fetchSubRSSFeeds(value));
       Utilities.sleep(value.length * 1000);
     });
   } catch (e) {
@@ -57,7 +57,7 @@ function fetchRSSFeeds() {
     return;
   }
 
-  // feedのレスポンスから、RSSエントリを全部1つの配列に入れる。
+  // fetchRSSFeedsのレスポンスをバラして1つの配列に詰め直す
   const RSSFEED_ENTRIES = [];
   let some_mins_ago = new Date();
   some_mins_ago.setMinutes(some_mins_ago.getMinutes() - Number(getScriptProperty('article_max_age')));// 古さの許容範囲
@@ -71,7 +71,6 @@ function fetchRSSFeeds() {
     const TRANSLATE_TO = RSSFEEDS[index][1];
 
     if (value.getResponseCode() == 200) {
-      // RSSエントリを取り出す
       const XML = XmlService.parse(value.getContentText());
       const RSS_TYPE = XML.getRootElement().getChildren('channel')[0] ? 1 : 2; // 1: RSS2.0, 2: RSS1.0
       const RSSFEED_TITLE = getRSSFeedTitle(RSS_TYPE, XML);
@@ -93,8 +92,8 @@ function fetchRSSFeeds() {
 
 function doToot(rssfeed_entries) {
   // Tootした後のRSS情報を記録する配列
-  let current_entries_array = [];
-  let firstrun_urls = [];
+  const current_entries_array = [];
+  const firstrun_urls = [];
 
   // スクリプトプロパティを取得
   let ratelimit_remaining = Number(getScriptProperty('ratelimit_remaining'));
@@ -106,11 +105,10 @@ function doToot(rssfeed_entries) {
   let store_max_age = Number(getScriptProperty('store_max_age'));
   let ratelimit_reset_date = getScriptProperty('ratelimit_reset_date');
 
-
   // キャッシュの取得
   const STORED_ENTRIES_SHEET = getSheet(SPREAD_SHEET, 'store');
   const STORED_ENTRIES = getSheetValues(STORED_ENTRIES_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
-  let feed_store_url = getSheetValues(STORED_ENTRIES_SHEET, 2, 2, 1); // タイトルのみ取得（B2(2:2,B:2)を起点に最終データ行までの1列分) 
+  const STORED_ENTRY_URLS = getSheetValues(STORED_ENTRIES_SHEET, 2, 2, 1); // URLのみ取得（B2(2:2,B:2)を起点に最終データ行までの1列分) 
 
   // 初回実行記録シートからA2から最終行まで幅1列を取得
   const FIRSTRUN_URLS_SHEET = getSheet(SPREAD_SHEET, "firstrun");
@@ -123,7 +121,7 @@ function doToot(rssfeed_entries) {
   let toot_count = 0;
   rssfeed_entries.forEach(function (value, index, array) {
     if (!ratelimit_break) {
-      if (!isFirstrun(value.feed_url, FIRSTRUN_URLS) && !isFound(feed_store_url, value.eurl)) {
+      if (!isFirstrun(value.feed_url, FIRSTRUN_URLS) && !isFound(STORED_ENTRY_URLS, value.eurl)) {
         const TRIGGER_INTERVAL = trigger_interval;// mins 
         const RATELIMIT_WAIT_TIME = (new Date(ratelimit_reset_date) - new Date()) / (60 * 1000);
         const CURRENT_RATELIMIT = Math.round(ratelimit_remaining * (RATELIMIT_WAIT_TIME < TRIGGER_INTERVAL ? 1 : TRIGGER_INTERVAL / RATELIMIT_WAIT_TIME));
@@ -152,7 +150,7 @@ function doToot(rssfeed_entries) {
           return;
         }
         // TootしたものをToot済みのものとして足す
-        feed_store_url.push([value.eurl]);
+        STORED_ENTRY_URLS.push([value.eurl]);
 
         // Tootした/するはずだったRSS情報を配列に保存。後でまとめてstoreシートに書き込む
         current_entries_array.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);
@@ -217,7 +215,7 @@ function doPost(p) {
   return UrlFetchApp.fetch(getScriptProperty('mastodon_url'), options);
 }
 
-function fetchFeed(feed_url_list) {
+function fetchSubRSSFeeds(feed_url_list) {
   let requests = [];
 
   for (let i = 0; i < feed_url_list.length; i++) {

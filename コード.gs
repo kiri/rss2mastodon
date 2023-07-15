@@ -58,7 +58,7 @@ function fetchRSSFeeds() {
   }
 
   // feedのレスポンスから、RSSエントリを全部1つの配列に入れる。
-  let rss_entries = [];
+  const RSSFEED_ENTRIES = [];
   let some_mins_ago = new Date();
   some_mins_ago.setMinutes(some_mins_ago.getMinutes() - Number(getScriptProperty('article_max_age')));// 古さの許容範囲
 
@@ -67,52 +67,45 @@ function fetchRSSFeeds() {
   const FIRSTRUN_URLS = getSheetValues(FIRSTRUN_URLS_SHEET, 2, 1, 1);
 
   responses.forEach(function (value, index, array) {
-    array[index].feed_url = RSSFEEDS[index][0];
-    array[index].translate_to = RSSFEEDS[index][1];
+    const RSSFEED_URL = RSSFEEDS[index][0];
+    const TRANSLATE_TO = RSSFEEDS[index][1];
 
     if (value.getResponseCode() == 200) {
       // RSSエントリを取り出す
       const XML = XmlService.parse(value.getContentText());
       const RSS_TYPE = XML.getRootElement().getChildren('channel')[0] ? 1 : 2; // 1: RSS2.0, 2: RSS1.0
-      const RSSFEED_TITLE = getFeedTitle(RSS_TYPE, XML);
-      const RSSFEED_ENTRIES = getFeedEntries(RSS_TYPE, XML);
-
-      RSSFEED_ENTRIES.forEach(function (entry) {
-        const ENTRY_TITLE = getItemTitle(RSS_TYPE, entry);
-        const ENTRY_URL = getItemUrl(RSS_TYPE, entry, entry.feed_url);
-        const ENTRY_DESCRIPTION = getItemDescription(RSS_TYPE, entry);
-        const ENTRY_DATE = new Date(getItemDate(RSS_TYPE, entry));
-        if (some_mins_ago < ENTRY_DATE || isFirstrun(value.feed_url, FIRSTRUN_URLS)) { // 期限内 or 初回実行 
-          rss_entries.push({ ftitle: RSSFEED_TITLE, etitle: ENTRY_TITLE, econtent: ENTRY_DESCRIPTION, eurl: ENTRY_URL, to: value.translate_to, feed_url: value.feed_url, edate: ENTRY_DATE });
-        } else {
-          //Logger.log(ENTRY_DATE + "is Old. [" + FEED_TITLE + "/" + ENTRY_TITLE + "]");
+      const RSSFEED_TITLE = getRSSFeedTitle(RSS_TYPE, XML);
+      getRSSFeedEntries(RSS_TYPE, XML).forEach(function (entry) {
+        const ENTRY_TITLE = getEntryTitle(RSS_TYPE, entry);
+        const ENTRY_URL = getEntryUrl(RSS_TYPE, entry, RSSFEED_URL);
+        const ENTRY_DESCRIPTION = getEntryDescription(RSS_TYPE, entry);
+        const ENTRY_DATE = new Date(getEntryDate(RSS_TYPE, entry));
+        if (some_mins_ago < ENTRY_DATE || isFirstrun(RSSFEED_URL, FIRSTRUN_URLS)) { // 期限内 or 初回実行 
+          RSSFEED_ENTRIES.push({ ftitle: RSSFEED_TITLE, etitle: ENTRY_TITLE, econtent: ENTRY_DESCRIPTION, eurl: ENTRY_URL, to: TRANSLATE_TO, feed_url: RSSFEED_URL, edate: ENTRY_DATE });
         }
       });
     } else {
-      Logger.log("not 200: " + RSSFEEDS[index][0]);
+      Logger.log("not 200: " + RSSFEED_URL);
     }
   });
-  return rss_entries.sort((a, b) => a.edate - b.edate);
+  return RSSFEED_ENTRIES.sort((a, b) => a.edate - b.edate);
 }
 
-function doToot(rss_entries) {
-  // レートリミット超えによる中断・スキップ判定用
-  let ratelimit_break = false;
-  let t_count = 0;
-
+function doToot(rssfeed_entries) {
   // Tootした後のRSS情報を記録する配列
   let current_entries_array = [];
   let firstrun_urls = [];
 
   // スクリプトプロパティを取得
+  let ratelimit_remaining = Number(getScriptProperty('ratelimit_remaining'));
+  if (ratelimit_remaining <= 0) {
+    return;
+  }
+  let ratelimit_limit = Number(getScriptProperty('ratelimit_limit'));
   let trigger_interval = Number(getScriptProperty('trigger_interval'));
   let store_max_age = Number(getScriptProperty('store_max_age'));
   let ratelimit_reset_date = getScriptProperty('ratelimit_reset_date');
-  let ratelimit_remaining = Number(getScriptProperty('ratelimit_remaining'));
-  let ratelimit_limit = Number(getScriptProperty('ratelimit_limit'));
-  if (ratelimit_remaining == 0) {
-    ratelimit_break = true;
-  }
+
 
   // キャッシュの取得
   const STORED_ENTRIES_SHEET = getSheet(SPREAD_SHEET, 'store');
@@ -123,10 +116,12 @@ function doToot(rss_entries) {
   const FIRSTRUN_URLS_SHEET = getSheet(SPREAD_SHEET, "firstrun");
   const FIRSTRUN_URLS = getSheetValues(FIRSTRUN_URLS_SHEET, 2, 1, 1);
 
-  // すでにToot済みのはこの時刻
+  // すでにToot済みのはこの時刻で統一
   const TIMESTAMP = new Date().toString();
-
-  rss_entries.forEach(function (value, index, array) {
+  // レートリミット超えによる中断・スキップ判定用
+  let ratelimit_break = false;
+  let toot_count = 0;
+  rssfeed_entries.forEach(function (value, index, array) {
     if (!ratelimit_break) {
       if (!isFirstrun(value.feed_url, FIRSTRUN_URLS) && !isFound(feed_store_url, value.eurl)) {
         const TRIGGER_INTERVAL = trigger_interval;// mins 
@@ -136,8 +131,8 @@ function doToot(rss_entries) {
         let response;
         try {
           response = doPost(value);
-          t_count++;
-          Logger.log("info Toot():%s %s", t_count, value);
+          toot_count++;
+          Logger.log("info Toot():%s %s", toot_count, value);
           Utilities.sleep(1 * 1000);
         } catch (e) {
           // GASのエラーとか
@@ -150,7 +145,7 @@ function doToot(rss_entries) {
         ratelimit_remaining = Number(RESPONSE_HEADERS['x-ratelimit-remaining']);
         ratelimit_reset_date = RESPONSE_HEADERS['x-ratelimit-reset'];
         ratelimit_limit = Number(RESPONSE_HEADERS['x-ratelimit-limit']);
-        if (t_count > CURRENT_RATELIMIT || response.getResponseCode() == 429) { // レートリミットを超え or 429 なら終了フラグを立てる
+        if (toot_count > CURRENT_RATELIMIT || response.getResponseCode() == 429) { // レートリミットを超え or 429 なら終了フラグを立てる
           ratelimit_break = true;
         } else if (response.getResponseCode() != 200) {
           Utilities.sleep(5 * 1000);
@@ -177,7 +172,7 @@ function doToot(rss_entries) {
   setScriptProperty('ratelimit_remaining', ratelimit_remaining);
   setScriptProperty('ratelimit_limit', ratelimit_limit);
   Logger.log("setScriptProperty %s %s %s", ratelimit_reset_date, ratelimit_remaining, ratelimit_limit);
-  
+
   // 初回実行記録シートにURL記録
   addFirstrunSheet(Array.from(new Set(FIRSTRUN_URLS.concat(firstrun_urls))), FIRSTRUN_URLS_SHEET);
 
@@ -238,7 +233,7 @@ function fetchFeed(feed_url_list) {
   return UrlFetchApp.fetchAll(requests);
 }
 
-function getFeedTitle(rsstype, xml) {
+function getRSSFeedTitle(rsstype, xml) {
   let feedtitle = "";
   switch (rsstype) {
     case 1:
@@ -251,7 +246,7 @@ function getFeedTitle(rsstype, xml) {
   return feedtitle;
 }
 
-function getFeedEntries(rsstype, xml) {
+function getRSSFeedEntries(rsstype, xml) {
   let feedentries = [];
   switch (rsstype) {
     case 1:
@@ -264,7 +259,7 @@ function getFeedEntries(rsstype, xml) {
   return feedentries;
 }
 
-function getItemTitle(rsstype, element) {
+function getEntryTitle(rsstype, element) {
   let title = "";
   switch (rsstype) {
     case 1:
@@ -277,7 +272,7 @@ function getItemTitle(rsstype, element) {
   return title;
 }
 
-function getItemUrl(rsstype, element, feedurl) {
+function getEntryUrl(rsstype, element, feedurl) {
   let url = "";
   switch (rsstype) {
     case 1:
@@ -293,7 +288,7 @@ function getItemUrl(rsstype, element, feedurl) {
   return url;
 }
 
-function getItemDescription(rsstype, element) {
+function getEntryDescription(rsstype, element) {
   let description = "";
   switch (rsstype) {
     case 1:
@@ -306,7 +301,7 @@ function getItemDescription(rsstype, element) {
   return description;
 }
 
-function getItemDate(rsstype, element) {
+function getEntryDate(rsstype, element) {
   let date = "";
   switch (rsstype) {
     case 1:

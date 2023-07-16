@@ -47,8 +47,13 @@ function fetchRSSFeeds() {
   let responses = [];
   try {
     rssfeed_urls_list.forEach(function (value, index, array) {
+      let start_time = new Date();
       responses = responses.concat(fetchSubRSSFeeds(value));
-      Utilities.sleep(value.length * 1000);
+      let end_time = new Date();
+      let wait_time = (value.length * 1000) - (end_time - start_time);
+      wait_time = wait_time < 0 ? 0 : wait_time;
+      Logger.log("wait_time: " + wait_time);
+      Utilities.sleep(wait_time);
     });
   } catch (e) {
     // GASのエラーとか
@@ -128,10 +133,15 @@ function doToot(rssfeed_entries) {
 
         let response;
         try {
+          let start_time = new Date();
           response = doPost(value);
+          let end_time = new Date();
           toot_count++;
           Logger.log("info Toot():%s %s", toot_count, value);
-          Utilities.sleep(1 * 1000);
+          let wait_time = (1 * 1000) - (end_time - start_time);
+          wait_time = wait_time < 0 ? 0 : wait_time;
+          Logger.log("wait_time: " + wait_time);
+          Utilities.sleep(wait_time);
         } catch (e) {
           // GASのエラーとか
           Logger.log("error Toot():" + e.message);

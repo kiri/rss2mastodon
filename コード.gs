@@ -3,6 +3,8 @@
 */
 const NAMESPACE_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
 const NAMESPACE_DC = XmlService.getNamespace("http://purl.org/dc/elements/1.1/");
+const NAMESPACE_ATOM = XmlService.getNamespace('http://www.w3.org/2005/Atom');
+
 const SPREAD_SHEET = SpreadsheetApp.getActiveSpreadsheet();
 //const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
 
@@ -77,7 +79,25 @@ function fetchRSSFeeds() {
 
     if (value.getResponseCode() == 200) {
       const XML = XmlService.parse(value.getContentText());
-      const RSS_TYPE = XML.getRootElement().getChildren('channel')[0] ? 1 : 2; // 1: RSS2.0, 2: RSS1.0
+      const ROOT = XML.getRootElement();
+
+      let RSS_TYPE;
+      if (ROOT.getChildren('entry', NAMESPACE_ATOM).length > 0) {
+        RSS_TYPE = 3;
+        Logger.log("ATOM "+RSSFEED_URL);
+      } else if (ROOT.getChildren('item', NAMESPACE_RSS).length > 0) {
+        RSS_TYPE = 2;
+        Logger.log("RSS1.0 "+RSSFEED_URL);
+      } else if (ROOT.getChild('channel')?.getChildren('item').length > 0) {
+        RSS_TYPE = 1;
+        Logger.log("RSS2.0 "+RSSFEED_URL);
+      } else {
+        RSS_TYPE = 99;
+        Logger.log("Unknown "+RSSFEED_URL);
+      }
+
+      //const RSS_TYPE = ROOT.getChildren('channel')[0] ? 1 : 2; // 1: RSS2.0, 2: RSS1.0
+
       const RSSFEED_TITLE = getRSSFeedTitle(RSS_TYPE, XML);
       getRSSFeedEntries(RSS_TYPE, XML).forEach(function (entry) {
         const ENTRY_TITLE = getEntryTitle(RSS_TYPE, entry);

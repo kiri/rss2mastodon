@@ -14,7 +14,7 @@ function main() {
   const LOCK = LockService.getDocumentLock();
   try {
     LOCK.waitLock(0);
-    doToot(fetchRSSFeeds());
+    doToot(readRSSFeeds());
   } catch (e) {
     Logger.log("error main():" + e.message);
   } finally {
@@ -22,7 +22,7 @@ function main() {
   }
 }
 
-function fetchRSSFeeds() {
+function readRSSFeeds() {
   // RSSフィードを列挙したfeedurlsシート [feed url][翻訳]
   const RSSFEEDS_SHEET = getSheet(SPREAD_SHEET, "feedurls");
   const RSSFEEDS = getSheetValues(RSSFEEDS_SHEET, 2, 1, 2);

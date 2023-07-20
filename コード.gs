@@ -92,9 +92,10 @@ function readRSSFeeds() {
 
       //let RSS_TYPE;
       let RSSFEED_TITLE, ENTRY_TITLE, ENTRY_URL, ENTRY_DESCRIPTION , ENTRY_DATE;
+      // ATOM
       if (ROOT.getChildren('entry', NAMESPACE_ATOM).length > 0) {
         //RSS_TYPE = 3;
-        Logger.log("ATOM " + RSSFEED_URL);
+        //Logger.log("ATOM " + RSSFEED_URL);
         RSSFEED_TITLE = XML.getRootElement().getChildText('title', NAMESPACE_ATOM);
         XML.getRootElement().getChildren('entry', NAMESPACE_ATOM).forEach(function (entry) {
           ENTRY_TITLE = entry.getChildText('title', NAMESPACE_ATOM).replace(/(\')/gi, '');
@@ -107,9 +108,10 @@ function readRSSFeeds() {
             RSSFEED_ENTRIES.push({ ftitle: RSSFEED_TITLE, etitle: ENTRY_TITLE, econtent: ENTRY_DESCRIPTION, eurl: ENTRY_URL, to: TRANSLATE_TO, feed_url: RSSFEED_URL, edate: ENTRY_DATE });
           }
         });
+        // RSS1.0
       } else if (ROOT.getChildren('item', NAMESPACE_RSS).length > 0) {
         //RSS_TYPE = 2;
-        Logger.log("RSS1.0 " + RSSFEED_URL);
+        //Logger.log("RSS1.0 " + RSSFEED_URL);
         RSSFEED_TITLE = XML.getRootElement().getChild('channel', NAMESPACE_RSS).getChildText('title', NAMESPACE_RSS);//getRSSFeedTitle(RSS_TYPE, XML);
         XML.getRootElement().getChildren('item', NAMESPACE_RSS).forEach(function (entry) {
           ENTRY_TITLE = entry.getChildText('title', NAMESPACE_RSS).replace(/(\')/gi, '');//getEntryTitle(RSS_TYPE, entry);
@@ -121,9 +123,10 @@ function readRSSFeeds() {
             RSSFEED_ENTRIES.push({ ftitle: RSSFEED_TITLE, etitle: ENTRY_TITLE, econtent: ENTRY_DESCRIPTION, eurl: ENTRY_URL, to: TRANSLATE_TO, feed_url: RSSFEED_URL, edate: ENTRY_DATE });
           }
         });
+        // RSS2.0
       } else if (ROOT.getChild('channel')?.getChildren('item').length > 0) {
-        RSS_TYPE = 1;
-        Logger.log("RSS2.0 " + RSSFEED_URL);
+        //RSS_TYPE = 1;
+        //Logger.log("RSS2.0 " + RSSFEED_URL);
         RSSFEED_TITLE = XML.getRootElement().getChild('channel').getChildText('title');//getRSSFeedTitle(RSS_TYPE, XML);
         XML.getRootElement().getChild('channel').getChildren('item').forEach(function (entry) {
           ENTRY_TITLE = entry.getChildText('title').replace(/(\')/gi, ''); // シングルクォーテーションは消す。getEntryTitle(RSS_TYPE, entry);
@@ -136,7 +139,6 @@ function readRSSFeeds() {
           }
         });
       } else {
-        RSS_TYPE = 99;
         Logger.log("Unknown " + RSSFEED_URL);
       }
     } else {
@@ -145,20 +147,6 @@ function readRSSFeeds() {
   });
   return RSSFEED_ENTRIES.sort((a, b) => a.edate - b.edate);
 }
-
-/* function readRSSFeed(feed_url_list) {
-  let requests = [];
-  for (let i = 0; i < feed_url_list.length; i++) {
-    let param = {
-      url: feed_url_list[i][0],
-      method: 'get',
-      followRedirects: false,
-      muteHttpExceptions: true
-    };
-    requests.push(param);
-  }
-  return UrlFetchApp.fetchAll(requests);
-} */
 
 function doToot(rssfeed_entries) {
   // Tootした後のRSS情報を記録する配列
@@ -289,6 +277,20 @@ function doPost(p) {
 
   return UrlFetchApp.fetch(getScriptProperty('mastodon_url'), options);
 }
+
+/* function readRSSFeed(feed_url_list) {
+  let requests = [];
+  for (let i = 0; i < feed_url_list.length; i++) {
+    let param = {
+      url: feed_url_list[i][0],
+      method: 'get',
+      followRedirects: false,
+      muteHttpExceptions: true
+    };
+    requests.push(param);
+  }
+  return UrlFetchApp.fetchAll(requests);
+} */
 
 /* function getRSSFeedTitle(rsstype, xml) {
   let feedtitle = "";

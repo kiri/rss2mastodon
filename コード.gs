@@ -25,15 +25,13 @@ function main() {
 }
 
 function saveEntries(array) {
-  let store_max_age = Number(getScriptProperty('store_max_age'));
   // 履歴の取得
   const STORED_ENTRIES_SHEET = getSheet(SPREAD_SHEET, 'store');
   const STORED_ENTRIES = getSheetValues(STORED_ENTRIES_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
 
   // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
-  let expire_date = new Date();
-  expire_date.setMinutes(expire_date.getMinutes() - store_max_age);
-  let merged_entries_array = array.concat(STORED_ENTRIES.filter(function (item) { return new Date(item[3]) > expire_date; }));
+  let max_millisec_age = Number(getScriptProperty('store_max_age')) * 60 * 1000;
+  let merged_entries_array = array.concat(STORED_ENTRIES.filter(function (item) { return Date.now() < (new Date(item[3]).getTime() + max_millisec_age); }));
   STORED_ENTRIES_SHEET.clear();
   if (merged_entries_array.length > 0) {
     STORED_ENTRIES_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array.sort((a, b) => new Date(b[3]) - new Date(a[3]))).removeDuplicates([2]);
@@ -93,8 +91,7 @@ function readRSSFeeds() {
   const STORED_ENTRY_URLS = getSheetValues(STORED_ENTRIES_SHEET, 2, 2, 1); // URLのみ取得（B2(2:2,B:2)を起点に最終データ行までの1列分) 
 
   // 記事の期限
-  let expire_date = new Date();
-  expire_date.setMinutes(expire_date.getMinutes() - Number(getScriptProperty('article_max_age')));// 古さの許容範囲
+  let max_millisec_age = Number(getScriptProperty('article_max_age')) * 60 * 1000;
 
   // 返り値のRSSフィードのリスト
   const RSSFEED_ENTRIES = [];
@@ -116,7 +113,7 @@ function readRSSFeeds() {
             edate: new Date(entry.getChildText('updated', NAMESPACE_ATOM)),
             feed_url: RSSFEED_URL
           };
-          if (!isFound(STORED_ENTRY_URLS, e.eurl) && expire_date < e.edate) {
+          if (!isFound(STORED_ENTRY_URLS, e.eurl) && Date.now() < (e.edate.getTime() + max_millisec_age)) {
             e.options = composeToot(e);
           }
           RSSFEED_ENTRIES.push(e);
@@ -133,7 +130,7 @@ function readRSSFeeds() {
             edate: new Date(entry.getChildText('date', NAMESPACE_DC)),
             feed_url: RSSFEED_URL
           };
-          if (!isFound(STORED_ENTRY_URLS, e.eurl) && expire_date < e.edate) {
+          if (!isFound(STORED_ENTRY_URLS, e.eurl) && Date.now() < (e.edate.getTime() + max_millisec_age)) {
             e.options = composeToot(e);
           }
           RSSFEED_ENTRIES.push(e);
@@ -150,7 +147,7 @@ function readRSSFeeds() {
             edate: new Date(entry.getChildText('pubDate')),
             feed_url: RSSFEED_URL
           };
-          if (!isFound(STORED_ENTRY_URLS, e.eurl) && expire_date < e.edate) {
+          if (!isFound(STORED_ENTRY_URLS, e.eurl) && Date.now() < (e.edate.getTime() + max_millisec_age)) {
             e.options = composeToot(e);
           }
           RSSFEED_ENTRIES.push(e);

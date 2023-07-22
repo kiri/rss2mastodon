@@ -25,9 +25,9 @@ function main() {
 function readRSSFeeds() {
   // RSSフィードを列挙したfeedurlsシート [feed url][翻訳]
   const RSSFEEDS_SHEET = getSheet(SPREAD_SHEET, "feedurls");
-  const RSSFEEDS = getSheetValues(RSSFEEDS_SHEET, 2, 1, 2);
+  const RSSFEEDS = getSheetValues(RSSFEEDS_SHEET, 2, 1, 1);
   if (RSSFEEDS.length == 0) {
-    RSSFEEDS.getRange(2, 1, 1, 2).setValues([['https://example.com/rss', 'en']]);
+    RSSFEEDS.getRange(2, 1, 1, 1).setValues([['https://example.com/rss']]);
   }
   Logger.log(RSSFEEDS);
 
@@ -84,7 +84,6 @@ function readRSSFeeds() {
       const XML = XmlService.parse(value.getContentText());
       const ROOT = XML.getRootElement();
       const RSSFEED_URL = RSSFEEDS[index][0];
-      const TRANSLATE_TO = RSSFEEDS[index][1];
 
       // ATOM
       if (ROOT.getChildren('entry', NAMESPACE_ATOM).length > 0) {
@@ -96,7 +95,6 @@ function readRSSFeeds() {
             econtent: entry.getChildText('content', NAMESPACE_ATOM)?.replace(/(<([^>]+)>)/gi, ''),
             eurl: entry.getChild('link', NAMESPACE_ATOM).getAttribute('href').getValue(),
             edate: new Date(entry.getChildText('updated', NAMESPACE_ATOM)),
-            to: TRANSLATE_TO,
             feed_url: RSSFEED_URL
           };
           if (!isFound(STORED_ENTRY_URLS, e.eurl) && expire_date < e.edate) {
@@ -114,7 +112,6 @@ function readRSSFeeds() {
             econtent: entry.getChildText('description', NAMESPACE_RSS)?.replace(/(<([^>]+)>)/gi, ''),
             eurl: entry.getChildText('link', NAMESPACE_RSS),
             edate: new Date(entry.getChildText('date', NAMESPACE_DC)),
-            to: TRANSLATE_TO,
             feed_url: RSSFEED_URL
           };
           if (!isFound(STORED_ENTRY_URLS, e.eurl) && expire_date < e.edate) {
@@ -132,7 +129,6 @@ function readRSSFeeds() {
             econtent: entry.getChildText('description')?.replace(/(<([^>]+)>)/gi, ''),
             eurl: entry.getChildText('link'),
             edate: new Date(entry.getChildText('pubDate')),
-            to: TRANSLATE_TO,
             feed_url: RSSFEED_URL
           };
           if (!isFound(STORED_ENTRY_URLS, e.eurl) && expire_date < e.edate) {
@@ -153,7 +149,6 @@ function readRSSFeeds() {
 function doToot(rssfeed_entries) {
   // Tootした後のRSS情報を記録する配列
   const current_entries_array = [];
-  const firstrun_urls = [];
 
   // スクリプトプロパティを取得
   let ratelimit_remaining = Number(getScriptProperty('ratelimit_remaining'));
@@ -165,18 +160,6 @@ function doToot(rssfeed_entries) {
   let store_max_age = Number(getScriptProperty('store_max_age'));
   let ratelimit_reset_date = getScriptProperty('ratelimit_reset_date');
 
-  let article_some_mins_ago = new Date();
-  article_some_mins_ago.setMinutes(article_some_mins_ago.getMinutes() - Number(getScriptProperty('article_max_age')));// 古さの許容範囲
-
-  // 履歴の取得
-  const STORED_ENTRIES_SHEET = getSheet(SPREAD_SHEET, 'store');
-  const STORED_ENTRIES = getSheetValues(STORED_ENTRIES_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
-  const STORED_ENTRY_URLS = getSheetValues(STORED_ENTRIES_SHEET, 2, 2, 1); // URLのみ取得（B2(2:2,B:2)を起点に最終データ行までの1列分) 
-
-  // 初回実行記録シートからA2から最終行まで幅1列を取得
-  const FIRSTRUN_URLS_SHEET = getSheet(SPREAD_SHEET, "firstrun");
-  const FIRSTRUN_URLS = getSheetValues(FIRSTRUN_URLS_SHEET, 2, 1, 1);
-
   // すでにToot済みのはこの時刻で統一
   const TIMESTAMP = new Date().toString();
 
@@ -186,7 +169,7 @@ function doToot(rssfeed_entries) {
 
   rssfeed_entries.forEach(function (value, index, array) {
     if (!ratelimit_break) {
-      if (!isFirstrun(value.feed_url, FIRSTRUN_URLS) && value.options) {
+      if (value.options) {
         const TRIGGER_INTERVAL = trigger_interval;// mins 
         const RATELIMIT_WAIT_TIME = (new Date(ratelimit_reset_date) - new Date()) / (60 * 1000);
         const CURRENT_RATELIMIT = Math.round(ratelimit_remaining * (RATELIMIT_WAIT_TIME < TRIGGER_INTERVAL ? 1 : TRIGGER_INTERVAL / RATELIMIT_WAIT_TIME));
@@ -216,18 +199,11 @@ function doToot(rssfeed_entries) {
           Utilities.sleep(5 * 1000);
           return;
         }
-        // TootしたものをToot済みのものとして足す
-        STORED_ENTRY_URLS.push([value.eurl]);
 
         // Tootした/するはずだったRSS情報を配列に保存。後でまとめてstoreシートに書き込む
         current_entries_array.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);
       } else {
         current_entries_array.push([value.etitle, value.eurl, value.econtent, TIMESTAMP]);
-      }
-
-      if (isFirstrun(value.feed_url, FIRSTRUN_URLS)) {
-        // FirstRunのfeed urlを保存
-        firstrun_urls.push(value.feed_url);
       }
     }
   });
@@ -238,8 +214,10 @@ function doToot(rssfeed_entries) {
   setScriptProperty('ratelimit_limit', ratelimit_limit);
   Logger.log("setScriptProperty %s %s %s", ratelimit_reset_date, ratelimit_remaining, ratelimit_limit);
 
-  // 初回実行記録シートにURL記録
-  addFirstrunSheet(Array.from(new Set(FIRSTRUN_URLS.concat(firstrun_urls))), FIRSTRUN_URLS_SHEET);
+  // 履歴の取得
+  const STORED_ENTRIES_SHEET = getSheet(SPREAD_SHEET, 'store');
+  const STORED_ENTRIES = getSheetValues(STORED_ENTRIES_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
+  //const STORED_ENTRY_URLS = getSheetValues(STORED_ENTRIES_SHEET, 2, 2, 1); // URLのみ取得（B2(2:2,B:2)を起点に最終データ行までの1列分) 
 
   // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
   let expire_date = new Date();
@@ -256,13 +234,17 @@ function composeToot(p) {
   let m = "";
   m = '📰 ' + p.etitle + '\n' + p.econtent + '\n';
 
-  if (p.to) {
-    let start_time = new Date();
-    m = m + '\n📝 ' + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, '', p.to) + '\n';
-    let end_time = new Date();
-    let wait_time = (1 * 1000) - (end_time - start_time);
-    Utilities.sleep(wait_time < 0 ? 0 : wait_time);
+  let trans_to = "en";
+  if (!p.econtent.split('').some(char => char.charCodeAt() > 255)) {
+    trans_to = "ja";
   }
+
+  let start_time = new Date();
+  m = m + '\n📝 ' + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, '', trans_to) + '\n';
+  let end_time = new Date();
+  let wait_time = (1 * 1000) - (end_time - start_time);
+  Utilities.sleep(wait_time < 0 ? 0 : wait_time);
+
   const SNIP = '✂\n';
   const URL_LEN = 30;
   const MAX_TOOT_LEN = 500;
@@ -329,28 +311,6 @@ function shuffleArray(array) {
     cloneArray[rand] = tmpStorage
   }
   return cloneArray
-}
-
-// 初回実行？
-function isFirstrun(feed_url, firstrun_urls_array) {
-  if (!isFound(firstrun_urls_array, feed_url)) {
-    return true;
-  }
-  return false;
-}
-
-// 初回実行時にfirstrunsheetに追加
-function addFirstrunSheet(firstrun_urls_array, firstrun_urls_sheet) {
-  if (firstrun_urls_array.length > 0) {
-    let array_2d = [];
-    for (let j = 0; j < firstrun_urls_array.length; j++) {
-      array_2d[j] = [firstrun_urls_array[j]];
-    }
-    firstrun_urls_sheet.clear();
-    firstrun_urls_sheet.getRange(2, 1, array_2d.length, 1).setValues(array_2d);
-    SpreadsheetApp.flush();
-  }
-  return;
 }
 
 // スクリプトプロパティがなかったとき用の初期設定

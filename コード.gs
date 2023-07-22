@@ -15,8 +15,8 @@ function main() {
   try {
     LOCK.waitLock(0);
     let rssfeeds = readRSSFeeds();
-    let current_entries_array = doToot(rssfeeds);
-    saveEntries(current_entries_array);
+    let toot_entries_array = doToot(rssfeeds);
+    saveEntries(toot_entries_array);
   } catch (e) {
     logError(e, "main()");
   } finally {

@@ -14,12 +14,31 @@ function main() {
   const LOCK = LockService.getDocumentLock();
   try {
     LOCK.waitLock(0);
-    doToot(readRSSFeeds());
+    let rssfeeds = readRSSFeeds();
+    let current_entries_array = doToot(rssfeeds);
+    saveEntries(current_entries_array);
   } catch (e) {
-    log(e, "main()");
+    logError(e, "main()");
   } finally {
     LOCK.releaseLock();
   }
+}
+
+function saveEntries(array) {
+  let store_max_age = Number(getScriptProperty('store_max_age'));
+  // 履歴の取得
+  const STORED_ENTRIES_SHEET = getSheet(SPREAD_SHEET, 'store');
+  const STORED_ENTRIES = getSheetValues(STORED_ENTRIES_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
+
+  // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
+  let expire_date = new Date();
+  expire_date.setMinutes(expire_date.getMinutes() - store_max_age);
+  let merged_entries_array = array.concat(STORED_ENTRIES.filter(function (item) { return new Date(item[3]) > expire_date; }));
+  STORED_ENTRIES_SHEET.clear();
+  if (merged_entries_array.length > 0) {
+    STORED_ENTRIES_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array.sort((a, b) => new Date(b[3]) - new Date(a[3]))).removeDuplicates([2]);
+  }
+  SpreadsheetApp.flush();
 }
 
 function readRSSFeeds() {
@@ -65,7 +84,7 @@ function readRSSFeeds() {
       Utilities.sleep(wait_time < 0 ? 0 : wait_time);
     });
   } catch (e) {
-    log(e, "readRSSFeeds()");
+    logError(e, "readRSSFeeds()");
     return;
   }
 
@@ -157,7 +176,7 @@ function doToot(rssfeed_entries) {
   }
   let ratelimit_limit = Number(getScriptProperty('ratelimit_limit'));
   let trigger_interval = Number(getScriptProperty('trigger_interval'));
-  let store_max_age = Number(getScriptProperty('store_max_age'));
+
   let ratelimit_reset_date = getScriptProperty('ratelimit_reset_date');
 
   // すでにToot済みのはこの時刻で統一
@@ -184,7 +203,7 @@ function doToot(rssfeed_entries) {
           let wait_time = (1 * 1000) - (end_time - start_time);
           Utilities.sleep(wait_time < 0 ? 0 : wait_time);
         } catch (e) {
-          log(e, "doToot()");
+          logError(e, "doToot()");
           Utilities.sleep(5 * 1000);
           return;
         }
@@ -214,20 +233,7 @@ function doToot(rssfeed_entries) {
   setScriptProperty('ratelimit_limit', ratelimit_limit);
   Logger.log("setScriptProperty %s %s %s", ratelimit_reset_date, ratelimit_remaining, ratelimit_limit);
 
-  // 履歴の取得
-  const STORED_ENTRIES_SHEET = getSheet(SPREAD_SHEET, 'store');
-  const STORED_ENTRIES = getSheetValues(STORED_ENTRIES_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
-  //const STORED_ENTRY_URLS = getSheetValues(STORED_ENTRIES_SHEET, 2, 2, 1); // URLのみ取得（B2(2:2,B:2)を起点に最終データ行までの1列分) 
-
-  // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
-  let expire_date = new Date();
-  expire_date.setMinutes(expire_date.getMinutes() - store_max_age);
-  let merged_entries_array = current_entries_array.concat(STORED_ENTRIES.filter(function (item) { return new Date(item[3]) > expire_date; }));
-  STORED_ENTRIES_SHEET.clear();
-  if (merged_entries_array.length > 0) {
-    STORED_ENTRIES_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array.sort((a, b) => new Date(b[3]) - new Date(a[3]))).removeDuplicates([2]);
-  }
-  SpreadsheetApp.flush();
+  return current_entries_array;
 }
 
 function composeToot(p) {
@@ -336,7 +342,7 @@ function setScriptProperty(key, value) {
   return PropertiesService.getScriptProperties().setProperty(key, value);
 }
 
-function log(e, str) {
+function logError(e, str) {
   Logger.log("error " + str + ": " + e.name);
   Logger.log("error " + str + ": " + e.toString());
   Logger.log("error " + str + ": " + e.message);

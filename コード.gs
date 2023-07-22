@@ -264,7 +264,6 @@ function composeToot(p) {
     contentType: 'application/json',
     muteHttpExceptions: true
   };
-
   return options;
 }
 

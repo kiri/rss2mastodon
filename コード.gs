@@ -136,7 +136,7 @@ function readRSSFeeds() {
         });
         // RSS1.0
       } else if (ROOT.getChildren('item', NAMESPACE_RSS).length > 0) {
-        RSSFEED_TITLE = XML.getRootElement().getChild('channel', NAMESPACE_RSS).getChildText('title', NAMESPACE_RSS);//getRSSFeedTitle(RSS_TYPE, XML);
+        RSSFEED_TITLE = XML.getRootElement().getChild('channel', NAMESPACE_RSS).getChildText('title', NAMESPACE_RSS);
         XML.getRootElement().getChildren('item', NAMESPACE_RSS).forEach(function (entry) {
           const ENTRY_DATE = new Date(entry.getChildText('date', NAMESPACE_DC));
           if (Date.now() < (ENTRY_DATE.getTime() + max_millisec_age)) {
@@ -155,7 +155,7 @@ function readRSSFeeds() {
         });
         // RSS2.0
       } else if (ROOT.getChild('channel')?.getChildren('item').length > 0) {
-        RSSFEED_TITLE = XML.getRootElement().getChild('channel').getChildText('title');//getRSSFeedTitle(RSS_TYPE, XML);
+        RSSFEED_TITLE = XML.getRootElement().getChild('channel').getChildText('title');
         XML.getRootElement().getChild('channel').getChildren('item').forEach(function (entry) {
           const ENTRY_DATE = new Date(entry.getChildText('pubDate'));
           if (Date.now() < (ENTRY_DATE.getTime() + max_millisec_age)) {

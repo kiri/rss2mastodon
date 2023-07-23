@@ -8,15 +8,23 @@ const NAMESPACE_ATOM = XmlService.getNamespace('http://www.w3.org/2005/Atom');
 const SPREAD_SHEET = SpreadsheetApp.getActiveSpreadsheet();
 //const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
 
+const SCRIPT_START_TIME = Date.now();
+
 function main() {
   initScriptProperty();
 
   const LOCK = LockService.getDocumentLock();
   try {
     LOCK.waitLock(0);
+    Logger.log("Start: readRSSFeeds() " + new Date().toString());
     let rssfeeds = readRSSFeeds();
+    Logger.log("End: readRSSFeeds() " + new Date().toString());
+    Logger.log("Start: doToot() " + new Date().toString());
     let toot_entries_array = doToot(rssfeeds);
+    Logger.log("End: doToot() " + new Date().toString());
+    Logger.log("Start: saveEntries() " + new Date().toString());
     saveEntries(toot_entries_array);
+    Logger.log("End: saveEntries() " + new Date().toString());
   } catch (e) {
     logException(e, "main()");
   } finally {
@@ -65,21 +73,25 @@ function readRSSFeeds() {
   let responses = [];
   try {
     rssfeed_urls_list.forEach(function (value, index, array) {
-      let start_time = Date.now();
-      let requests = [];
-      for (let i = 0; i < value.length; i++) {
-        let param = {
-          url: value[i][0],
-          method: 'get',
-          followRedirects: false,
-          muteHttpExceptions: true
-        };
-        requests.push(param);
+      Logger.log("rssfeed_urls_list index=" + index);
+      if (Date.now() < (SCRIPT_START_TIME + 4 * 60 * 1000)) {// 開始から5分までは実行可
+        let requests = [];
+        for (let i = 0; i < value.length; i++) {
+          let param = {
+            url: value[i][0],
+            method: 'get',
+            followRedirects: false,
+            muteHttpExceptions: true
+          };
+          requests.push(param);
+        }
+
+        let start_time = Date.now();
+        responses = responses.concat(UrlFetchApp.fetchAll(requests));
+        let end_time = Date.now();
+        let wait_time = (value.length * 1000) - (end_time - start_time);
+        Utilities.sleep(wait_time < 0 ? 0 : wait_time);
       }
-      responses = responses.concat(UrlFetchApp.fetchAll(requests));
-      let end_time = Date.now();
-      let wait_time = (value.length * 1000) - (end_time - start_time);
-      Utilities.sleep(wait_time < 0 ? 0 : wait_time);
     });
   } catch (e) {
     logException(e, "readRSSFeeds()");
@@ -96,7 +108,7 @@ function readRSSFeeds() {
   // 返り値のRSSフィードのリスト
   const RSSFEED_ENTRIES = [];
   responses.forEach(function (value, index, array) {
-    if (value.getResponseCode() == 200) {
+    if (value.getResponseCode() == 200 && Date.now() < (SCRIPT_START_TIME + 5 * 60 * 1000)) {
       const XML = XmlService.parse(value.getContentText());
       const ROOT = XML.getRootElement();
       const RSSFEED_URL = RSSFEEDS[index][0];
@@ -180,7 +192,7 @@ function doToot(rssfeed_entries) {
   let toot_count = 0;
 
   rssfeed_entries.forEach(function (value, index, array) {
-    if (!ratelimit_break) {
+    if (!ratelimit_break && Date.now() < (SCRIPT_START_TIME + 5.8 * 60 * 1000)) {
       if (value.options) {
         const TRIGGER_INTERVAL = trigger_interval;// mins 
         const RATELIMIT_WAIT_TIME = (new Date(ratelimit_reset_date).getTime() - Date.now()) / (60 * 1000);

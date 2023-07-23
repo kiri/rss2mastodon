@@ -110,8 +110,7 @@ function readRSSFeeds() {
             etitle: entry.getChildText('title', NAMESPACE_ATOM).replace(/(\')/gi, ''), // シングルクォーテーションは消す。
             econtent: entry.getChildText('content', NAMESPACE_ATOM)?.replace(/(<([^>]+)>)/gi, ''),
             eurl: entry.getChild('link', NAMESPACE_ATOM).getAttribute('href').getValue(),
-            edate: new Date(entry.getChildText('updated', NAMESPACE_ATOM)),
-            feed_url: RSSFEED_URL
+            edate: new Date(entry.getChildText('updated', NAMESPACE_ATOM))
           };
           if (!isFound(STORED_ENTRY_URLS, e.eurl) && Date.now() < (e.edate.getTime() + max_millisec_age)) {
             e.options = composeToot(e);
@@ -127,8 +126,7 @@ function readRSSFeeds() {
             etitle: entry.getChildText('title', NAMESPACE_RSS).replace(/(\')/gi, ''), // シングルクォーテーションは消す。
             econtent: entry.getChildText('description', NAMESPACE_RSS)?.replace(/(<([^>]+)>)/gi, ''),
             eurl: entry.getChildText('link', NAMESPACE_RSS),
-            edate: new Date(entry.getChildText('date', NAMESPACE_DC)),
-            feed_url: RSSFEED_URL
+            edate: new Date(entry.getChildText('date', NAMESPACE_DC))
           };
           if (!isFound(STORED_ENTRY_URLS, e.eurl) && Date.now() < (e.edate.getTime() + max_millisec_age)) {
             e.options = composeToot(e);
@@ -144,8 +142,7 @@ function readRSSFeeds() {
             etitle: entry.getChildText('title').replace(/(\')/gi, ''), // シングルクォーテーションは消す。
             econtent: entry.getChildText('description')?.replace(/(<([^>]+)>)/gi, ''),
             eurl: entry.getChildText('link'),
-            edate: new Date(entry.getChildText('pubDate')),
-            feed_url: RSSFEED_URL
+            edate: new Date(entry.getChildText('pubDate'))
           };
           if (!isFound(STORED_ENTRY_URLS, e.eurl) && Date.now() < (e.edate.getTime() + max_millisec_age)) {
             e.options = composeToot(e);
@@ -173,7 +170,6 @@ function doToot(rssfeed_entries) {
   }
   let ratelimit_limit = Number(getScriptProperty('ratelimit_limit'));
   let trigger_interval = Number(getScriptProperty('trigger_interval'));
-
   let ratelimit_reset_date = getScriptProperty('ratelimit_reset_date');
 
   // すでにToot済みのはこの時刻で統一

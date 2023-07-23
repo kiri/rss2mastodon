@@ -18,7 +18,7 @@ function main() {
     let toot_entries_array = doToot(rssfeeds);
     saveEntries(toot_entries_array);
   } catch (e) {
-    logError(e, "main()");
+    logException(e, "main()");
   } finally {
     LOCK.releaseLock();
   }
@@ -34,7 +34,7 @@ function saveEntries(array) {
   let merged_entries_array = array.concat(STORED_ENTRIES.filter(function (item) { return Date.now() < (new Date(item[3]).getTime() + max_millisec_age); }));
   STORED_ENTRIES_SHEET.clear();
   if (merged_entries_array.length > 0) {
-    STORED_ENTRIES_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array.sort((a, b) => new Date(b[3]) - new Date(a[3]))).removeDuplicates([2]);
+    STORED_ENTRIES_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array.sort((a, b) => new Date(b[3]).getTime() - new Date(a[3]).getTime())).removeDuplicates([2]);
   }
   SpreadsheetApp.flush();
 }
@@ -65,7 +65,7 @@ function readRSSFeeds() {
   let responses = [];
   try {
     rssfeed_urls_list.forEach(function (value, index, array) {
-      let start_time = new Date();
+      let start_time = Date.now();
       let requests = [];
       for (let i = 0; i < value.length; i++) {
         let param = {
@@ -77,12 +77,12 @@ function readRSSFeeds() {
         requests.push(param);
       }
       responses = responses.concat(UrlFetchApp.fetchAll(requests));
-      let end_time = new Date();
+      let end_time = Date.now();
       let wait_time = (value.length * 1000) - (end_time - start_time);
       Utilities.sleep(wait_time < 0 ? 0 : wait_time);
     });
   } catch (e) {
-    logError(e, "readRSSFeeds()");
+    logException(e, "readRSSFeeds()");
     return;
   }
 
@@ -183,20 +183,20 @@ function doToot(rssfeed_entries) {
     if (!ratelimit_break) {
       if (value.options) {
         const TRIGGER_INTERVAL = trigger_interval;// mins 
-        const RATELIMIT_WAIT_TIME = (new Date(ratelimit_reset_date) - new Date()) / (60 * 1000);
+        const RATELIMIT_WAIT_TIME = (new Date(ratelimit_reset_date).getTime() - Date.now()) / (60 * 1000);
         const CURRENT_RATELIMIT = Math.round(ratelimit_remaining * (RATELIMIT_WAIT_TIME < TRIGGER_INTERVAL ? 1 : TRIGGER_INTERVAL / RATELIMIT_WAIT_TIME));
 
         let response;
         try {
-          let start_time = new Date();
+          let start_time = Date.now();
           response = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), value.options);
-          let end_time = new Date();
+          let end_time = Date.now();
           toot_count++;
           Logger.log("info Toot():%s %s", toot_count, value);
           let wait_time = (1 * 1000) - (end_time - start_time);
           Utilities.sleep(wait_time < 0 ? 0 : wait_time);
         } catch (e) {
-          logError(e, "doToot()");
+          logException(e, "doToot()");
           Utilities.sleep(5 * 1000);
           return;
         }
@@ -238,9 +238,9 @@ function composeToot(p) {
     trans_to = "ja";
   }
 
-  let start_time = new Date();
+  let start_time = Date.now();
   m = m + '\n📝 ' + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, '', trans_to) + '\n';
-  let end_time = new Date();
+  let end_time = Date.now();
   let wait_time = (1 * 1000) - (end_time - start_time);
   Utilities.sleep(wait_time < 0 ? 0 : wait_time);
 
@@ -317,12 +317,12 @@ function initScriptProperty() {
     setScriptProperty('trigger_interval', 10); // minuites 
     setScriptProperty('store_max_age', 720); // minuites
     setScriptProperty('article_max_age', 120); // minuites
-    setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
+    setScriptProperty('ratelimit_reset_date', Date.now() + 3 * 60 * 60 * 1000);// miliseconds
     setScriptProperty('ratelimit_remaining', 300);
     setScriptProperty('ratelimit_limit', 300);
   }
-  if (new Date(getScriptProperty('ratelimit_reset_date')) <= new Date()) {
-    setScriptProperty('ratelimit_reset_date', new Date() + 3 * 60 * 60 * 1000);// miliseconds
+  if (new Date(getScriptProperty('ratelimit_reset_date')).getTime() <= Date.now()) {
+    setScriptProperty('ratelimit_reset_date', Date.now() + 3 * 60 * 60 * 1000);// miliseconds
     setScriptProperty('ratelimit_remaining', 300);
   }
 }
@@ -335,9 +335,7 @@ function setScriptProperty(key, value) {
   return PropertiesService.getScriptProperties().setProperty(key, value);
 }
 
-function logError(e, str) {
-  Logger.log("error " + str + ": " + e.name);
-  Logger.log("error " + str + ": " + e.toString());
-  Logger.log("error " + str + ": " + e.message);
-  Logger.log("error " + str + ": " + e.stack);
+function logException(e, str) {
+  Logger.log(e.name + " " + str + ": " + e.message);
+  Logger.log(e.name + " " + str + ": " + e.stack);
 }

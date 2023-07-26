@@ -35,18 +35,20 @@ function main() {
 }
 
 function saveEntries(array) {
-  // 履歴の取得
-  const STORED_ENTRIES_SHEET = getSheet(SPREAD_SHEET, 'store');
-  const STORED_ENTRIES = getSheetValues(STORED_ENTRIES_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
+  if (array) {
+    // 履歴の取得
+    const STORED_ENTRIES_SHEET = getSheet(SPREAD_SHEET, 'store');
+    const STORED_ENTRIES = getSheetValues(STORED_ENTRIES_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
 
-  // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
-  let max_millisec_age = Number(getScriptProperty('store_max_age')) * 60 * 1000;
-  let merged_entries_array = array.concat(STORED_ENTRIES.filter(function (item) { return Date.now() < (new Date(item[3]).getTime() + max_millisec_age); }));
-  STORED_ENTRIES_SHEET.clear();
-  if (merged_entries_array.length > 0) {
-    STORED_ENTRIES_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array.sort((a, b) => new Date(b[3]).getTime() - new Date(a[3]).getTime())).removeDuplicates([2]);
+    // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
+    let max_millisec_age = Number(getScriptProperty('store_max_age')) * 60 * 1000;
+    let merged_entries_array = array.concat(STORED_ENTRIES.filter(function (item) { return Date.now() < (new Date(item[3]).getTime() + max_millisec_age); }));
+    STORED_ENTRIES_SHEET.clear();
+    if (merged_entries_array?.length > 0) {
+      STORED_ENTRIES_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array.sort((a, b) => new Date(b[3]).getTime() - new Date(a[3]).getTime())).removeDuplicates([2]);
+    }
+    SpreadsheetApp.flush();
   }
-  SpreadsheetApp.flush();
 }
 
 function readRSSFeeds() {
@@ -110,65 +112,62 @@ function readRSSFeeds() {
   // 返り値のRSSフィードのリスト
   const RSSFEED_ENTRIES = [];
   responses.forEach(function (value, index, array) {
+    const RSSFEED_URL = RSSFEEDS[index][0];
     if (value.getResponseCode() == 200 && Date.now() < (SCRIPT_START_TIME + 5 * 60 * 1000)) {
       const XML = XmlService.parse(value.getContentText());
       const ROOT = XML.getRootElement();
-      const RSSFEED_URL = RSSFEEDS[index][0];
 
       // ATOM
       if (ROOT.getChildren('entry', NAMESPACE_ATOM).length > 0) {
-        RSSFEED_TITLE = XML.getRootElement().getChildText('title', NAMESPACE_ATOM);
-        XML.getRootElement().getChildren('entry', NAMESPACE_ATOM).forEach(function (entry) {
+        RSSFEED_TITLE = ROOT.getChildText('title', NAMESPACE_ATOM);
+        ROOT.getChildren('entry', NAMESPACE_ATOM).forEach(function (entry) {
           const ENTRY_DATE = new Date(entry.getChildText('updated', NAMESPACE_ATOM));
-          if (Date.now() < (ENTRY_DATE.getTime() + max_millisec_age)) {
+          const ENTRY_URL = entry.getChild('link', NAMESPACE_ATOM).getAttribute('href').getValue();
+          if (!isFound(STORED_ENTRY_URLS, ENTRY_URL) && Date.now() < (ENTRY_DATE.getTime() + max_millisec_age)) {
             let e = {
               ftitle: RSSFEED_TITLE,
               etitle: entry.getChildText('title', NAMESPACE_ATOM).replace(/(\')/gi, ''), // シングルクォーテーションは消す。
               econtent: entry.getChildText('content', NAMESPACE_ATOM)?.replace(/(<([^>]+)>)/gi, ''),
-              eurl: entry.getChild('link', NAMESPACE_ATOM).getAttribute('href').getValue(),
+              eurl: ENTRY_URL,
               edate: ENTRY_DATE
             };
-            if (!isFound(STORED_ENTRY_URLS, e.eurl)) {
-              e.options = composeToot(e);
-            }
+            e.options = composeToot(e);
             RSSFEED_ENTRIES.push(e);
           }
         });
         // RSS1.0
       } else if (ROOT.getChildren('item', NAMESPACE_RSS).length > 0) {
-        RSSFEED_TITLE = XML.getRootElement().getChild('channel', NAMESPACE_RSS).getChildText('title', NAMESPACE_RSS);
-        XML.getRootElement().getChildren('item', NAMESPACE_RSS).forEach(function (entry) {
+        RSSFEED_TITLE = ROOT.getChild('channel', NAMESPACE_RSS).getChildText('title', NAMESPACE_RSS);
+        ROOT.getChildren('item', NAMESPACE_RSS).forEach(function (entry) {
           const ENTRY_DATE = new Date(entry.getChildText('date', NAMESPACE_DC));
-          if (Date.now() < (ENTRY_DATE.getTime() + max_millisec_age)) {
+          const ENTRY_URL = entry.getChildText('link', NAMESPACE_RSS);
+          if (!isFound(STORED_ENTRY_URLS, ENTRY_URL) && Date.now() < (ENTRY_DATE.getTime() + max_millisec_age)) {
             let e = {
               ftitle: RSSFEED_TITLE,
               etitle: entry.getChildText('title', NAMESPACE_RSS).replace(/(\')/gi, ''), // シングルクォーテーションは消す。
               econtent: entry.getChildText('description', NAMESPACE_RSS)?.replace(/(<([^>]+)>)/gi, ''),
-              eurl: entry.getChildText('link', NAMESPACE_RSS),
+              eurl: ENTRY_URL,
               edate: ENTRY_DATE
             };
-            if (!isFound(STORED_ENTRY_URLS, e.eurl)) {
-              e.options = composeToot(e);
-            }
+            e.options = composeToot(e);
             RSSFEED_ENTRIES.push(e);
           }
         });
         // RSS2.0
       } else if (ROOT.getChild('channel')?.getChildren('item').length > 0) {
-        RSSFEED_TITLE = XML.getRootElement().getChild('channel').getChildText('title');
-        XML.getRootElement().getChild('channel').getChildren('item').forEach(function (entry) {
+        RSSFEED_TITLE = ROOT.getChild('channel').getChildText('title');
+        ROOT.getChild('channel').getChildren('item').forEach(function (entry) {
           const ENTRY_DATE = new Date(entry.getChildText('pubDate'));
-          if (Date.now() < (ENTRY_DATE.getTime() + max_millisec_age)) {
+          const ENTRY_URL = entry.getChildText('link');
+          if (!isFound(STORED_ENTRY_URLS, ENTRY_URL) && Date.now() < (ENTRY_DATE.getTime() + max_millisec_age)) {
             let e = {
               ftitle: RSSFEED_TITLE,
               etitle: entry.getChildText('title').replace(/(\')/gi, ''), // シングルクォーテーションは消す。
               econtent: entry.getChildText('description')?.replace(/(<([^>]+)>)/gi, ''),
-              eurl: entry.getChildText('link'),
+              eurl: ENTRY_URL,
               edate: ENTRY_DATE
             };
-            if (!isFound(STORED_ENTRY_URLS, e.eurl)) {
-              e.options = composeToot(e);
-            }
+            e.options = composeToot(e);
             RSSFEED_ENTRIES.push(e);
           }
         });
@@ -179,6 +178,7 @@ function readRSSFeeds() {
       Logger.log("not value.getResponseCode() == 200 && Date.now() < (SCRIPT_START_TIME + 5 * 60 * 1000) " + RSSFEED_URL);
     }
   });
+  Logger.log("RSSFEED_ENTRIES.length " + RSSFEED_ENTRIES?.length);
   return RSSFEED_ENTRIES.sort((a, b) => a.edate - b.edate);
 }
 
@@ -215,7 +215,7 @@ function doToot(rssfeed_entries) {
           response = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), value.options);
           let end_time = Date.now();
           toot_count++;
-          Logger.log("info Toot():%s %s", toot_count, value);
+          Logger.log("info Toot():%s %s", toot_count, value.etitle);
           let wait_time = (1 * 1000) - (end_time - start_time);
           Utilities.sleep(wait_time < 0 ? 0 : wait_time);
         } catch (e) {
@@ -241,7 +241,7 @@ function doToot(rssfeed_entries) {
         current_entries_array.push([value.etitle, value.eurl, value.econtent, TIMESTAMP]);
       }
     } else {
-      Logger.log("not !ratelimit_break && Date.now() < (SCRIPT_START_TIME + 5.8 * 60 * 1000)");
+      Logger.log("not !ratelimit_break && Date.now() < (SCRIPT_START_TIME + 5.8 * 60 * 1000) " + value.etitle);
     }
   });
 
@@ -259,16 +259,17 @@ function composeToot(p) {
   let m = "";
   m = '📰 ' + p.etitle + '\n' + p.econtent + '\n';
 
-  let trans_to = "en";
-  if (!p.econtent.split('').some(char => char.charCodeAt() > 255)) {
-    trans_to = "ja";
+  if (!p.econtent?.split('').some(char => char.charCodeAt() > 255)) {
+    let start_time = Date.now();
+    try {
+      m = m + '\n📝 ' + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, '', 'ja') + '\n';
+    } catch (e) {
+      logException(e, '')
+    }
+    let end_time = Date.now();
+    let wait_time = (1 * 1000) - (end_time - start_time);
+    Utilities.sleep(wait_time < 0 ? 0 : wait_time);
   }
-
-  let start_time = Date.now();
-  m = m + '\n📝 ' + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, '', trans_to) + '\n';
-  let end_time = Date.now();
-  let wait_time = (1 * 1000) - (end_time - start_time);
-  Utilities.sleep(wait_time < 0 ? 0 : wait_time);
 
   const SNIP = '✂\n';
   const URL_LEN = 30;

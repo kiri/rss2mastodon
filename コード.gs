@@ -259,7 +259,8 @@ function composeToot(p) {
   let m = "";
   m = '📰 ' + p.etitle + '\n' + p.econtent + '\n';
 
-  if (!p.econtent?.split('').some(char => char.charCodeAt() > 255)) {
+  //if (p.econtent && !p.econtent.split('').some(char => char.charCodeAt() > 255)) {
+  if (p.econtent && !p.econtent.split('').some(char => char.charCodeAt() > 255 && !(char.charCodeAt() >= 8215 && char.charCodeAt() <= 8223))) { //‘とか’とかは除外
     let start_time = Date.now();
     try {
       m = m + '\n📝 ' + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, '', 'ja') + '\n';

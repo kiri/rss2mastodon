@@ -260,10 +260,11 @@ function composeToot(p) {
   m = '📰 ' + p.etitle + '\n' + p.econtent + '\n';
 
   //if (p.econtent && !p.econtent.split('').some(char => char.charCodeAt() > 255)) {
-  if (p.econtent && !p.econtent.split('').some(char => char.charCodeAt() > 255 && !(char.charCodeAt() >= 8215 && char.charCodeAt() <= 8223))) { //‘とか’とかは除外
+  if (!p.etitle?.split('').some(char => char.charCodeAt() > 255 && !(char.charCodeAt() >= 8215 && char.charCodeAt() <= 8223))) { //‘とか’とかは除外
     let start_time = Date.now();
     try {
-      m = m + '\n📝 ' + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, '', 'ja') + '\n';
+      m = m + '\n📝 ' + LanguageApp.translate(p.etitle + "\n" + p.econtent, '', 'ja') + '\n';
+      //m = m + '\n📝 ' + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, '', 'ja') + '\n';
     } catch (e) {
       logException(e, '')
     }

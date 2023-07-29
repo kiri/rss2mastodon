@@ -1,21 +1,21 @@
 /*
  RSSをmastodonへtoot
 */
-const NAMESPACE_RSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
-const NAMESPACE_DC = XmlService.getNamespace("http://purl.org/dc/elements/1.1/");
-const NAMESPACE_ATOM = XmlService.getNamespace('http://www.w3.org/2005/Atom');
+const namespaceRSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
+const namespaceDC = XmlService.getNamespace("http://purl.org/dc/elements/1.1/");
+const namespaceATOM = XmlService.getNamespace('http://www.w3.org/2005/Atom');
 
-const SPREAD_SHEET = SpreadsheetApp.getActiveSpreadsheet();
+const spreadSheet = SpreadsheetApp.getActiveSpreadsheet();
 //const SPREADSHEET = SpreadsheetApp.openById(getScriptProperty('spreadsheet_id'));
 
-const SCRIPT_START_TIME = Date.now();
+const scriptStartTime = Date.now();
 
 function main() {
   initScriptProperty();
 
-  const LOCK = LockService.getDocumentLock();
+  const lock = LockService.getDocumentLock();
   try {
-    LOCK.waitLock(0);
+    lock.waitLock(0);
     Logger.log("Start: readRSSFeeds()");
     let rssfeeds = readRSSFeeds();
     Logger.log("End: readRSSFeeds()");
@@ -30,22 +30,22 @@ function main() {
   } catch (e) {
     logException(e, "main()");
   } finally {
-    LOCK.releaseLock();
+    lock.releaseLock();
   }
 }
 
 function saveEntries(array) {
   if (array) {
     // 履歴の取得
-    const STORED_ENTRIES_SHEET = getSheet(SPREAD_SHEET, 'store');
-    const STORED_ENTRIES = getSheetValues(STORED_ENTRIES_SHEET, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
+    const storedEntriesSheet = getSheet(spreadSheet, 'store');
+    const storedEntries = getSheetValues(storedEntriesSheet, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
 
     // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
     let max_millisec_age = Number(getScriptProperty('store_max_age')) * 60 * 1000;
-    let merged_entries_array = array.concat(STORED_ENTRIES.filter(function (item) { return Date.now() < (new Date(item[3]).getTime() + max_millisec_age); }));
-    STORED_ENTRIES_SHEET.clear();
+    let merged_entries_array = array.concat(storedEntries.filter(function (item) { return Date.now() < (new Date(item[3]).getTime() + max_millisec_age); }));
+    storedEntriesSheet.clear();
     if (merged_entries_array?.length > 0) {
-      STORED_ENTRIES_SHEET.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array.sort((a, b) => new Date(b[3]).getTime() - new Date(a[3]).getTime())).removeDuplicates([2]);
+      storedEntriesSheet.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array.sort((a, b) => new Date(b[3]).getTime() - new Date(a[3]).getTime())).removeDuplicates([2]);
     }
     SpreadsheetApp.flush();
   }
@@ -53,17 +53,18 @@ function saveEntries(array) {
 
 function readRSSFeeds() {
   // RSSフィードを列挙したfeedurlsシート [feed url][翻訳]
-  const RSSFEEDS_SHEET = getSheet(SPREAD_SHEET, "feedurls");
-  const RSSFEEDS = getSheetValues(RSSFEEDS_SHEET, 2, 1, 1);
-  if (RSSFEEDS.length == 0) {
-    RSSFEEDS.getRange(2, 1, 1, 1).setValues([['https://example.com/rss']]);
+  const rssFeedsSheet = getSheet(spreadSheet, "feedurls");
+  const rssFeeds = getSheetValues(rssFeedsSheet, 2, 1, 1);
+  if (rssFeeds.length == 0) {
+    rssFeeds.getRange(2, 1, 1, 1).setValues([['https://example.com/rss']]);
+    return [];
   }
-  Logger.log(RSSFEEDS);
+  Logger.log(rssFeeds);
 
   let rssfeed_urls_list = [];
   {
     let temp_rssfeed_urls_list = [];
-    RSSFEEDS.forEach(function (value, index, array) {
+    rssFeeds.forEach(function (value, index, array) {
       temp_rssfeed_urls_list.push(value);
       if ((index + 1) % 10 == 0) {
         rssfeed_urls_list.push(temp_rssfeed_urls_list);
@@ -78,7 +79,7 @@ function readRSSFeeds() {
   try {
     rssfeed_urls_list.forEach(function (value, index, array) {
       Logger.log("rssfeed_urls_list index=" + index);
-      if (Date.now() < (SCRIPT_START_TIME + 4 * 60 * 1000)) {// 開始から5分までは実行可
+      if (Date.now() < (scriptStartTime + 2 * 60 * 1000)) {// 開始から2分までは実行可
         let requests = [];
         for (let i = 0; i < value.length; i++) {
           let param = {
@@ -103,83 +104,83 @@ function readRSSFeeds() {
   }
 
   // 履歴の取得
-  const STORED_ENTRIES_SHEET = getSheet(SPREAD_SHEET, 'store');
-  const STORED_ENTRY_URLS = getSheetValues(STORED_ENTRIES_SHEET, 2, 2, 1); // URLのみ取得（B2(2:2,B:2)を起点に最終データ行までの1列分) 
+  const storedEntriesSheet = getSheet(spreadSheet, 'store');
+  const storedEntryUrls = getSheetValues(storedEntriesSheet, 2, 2, 1); // URLのみ取得（B2(2:2,B:2)を起点に最終データ行までの1列分) 
 
   // 記事の期限
   let max_millisec_age = Number(getScriptProperty('article_max_age')) * 60 * 1000;
 
   // 返り値のRSSフィードのリスト
-  const RSSFEED_ENTRIES = [];
+  const rssFeedEntries = [];
   responses.forEach(function (value, index, array) {
-    const RSSFEED_URL = RSSFEEDS[index][0];
-    if (value.getResponseCode() == 200 && Date.now() < (SCRIPT_START_TIME + 5 * 60 * 1000)) {
-      const XML = XmlService.parse(value.getContentText());
-      const ROOT = XML.getRootElement();
+    const rssFeedUrl = rssFeeds[index][0];
+    if (value.getResponseCode() == 200 && Date.now() < (scriptStartTime + 4 * 60 * 1000)) {
+      const xml = XmlService.parse(value.getContentText());
+      const root = xml.getRootElement();
 
       // ATOM
-      if (ROOT.getChildren('entry', NAMESPACE_ATOM).length > 0) {
-        RSSFEED_TITLE = ROOT.getChildText('title', NAMESPACE_ATOM);
-        ROOT.getChildren('entry', NAMESPACE_ATOM).forEach(function (entry) {
-          const ENTRY_DATE = new Date(entry.getChildText('updated', NAMESPACE_ATOM));
-          const ENTRY_URL = entry.getChild('link', NAMESPACE_ATOM).getAttribute('href').getValue();
-          if (!isFound(STORED_ENTRY_URLS, ENTRY_URL) && Date.now() < (ENTRY_DATE.getTime() + max_millisec_age)) {
+      if (root.getChildren('entry', namespaceATOM).length > 0) {
+        const rssFeedTitle = root.getChildText('title', namespaceATOM);
+        root.getChildren('entry', namespaceATOM).forEach(function (entry) {
+          const entryDate = new Date(entry.getChildText('updated', namespaceATOM));
+          const entryUrl = entry.getChild('link', namespaceATOM).getAttribute('href').getValue();
+          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + max_millisec_age)) {
             let e = {
-              ftitle: RSSFEED_TITLE,
-              etitle: entry.getChildText('title', NAMESPACE_ATOM).replace(/(\')/gi, ''), // シングルクォーテーションは消す。
-              econtent: entry.getChildText('content', NAMESPACE_ATOM)?.replace(/(<([^>]+)>)/gi, ''),
-              eurl: ENTRY_URL,
-              edate: ENTRY_DATE
+              ftitle: rssFeedTitle,
+              etitle: entry.getChildText('title', namespaceATOM).replace(/(\')/gi, ''), // シングルクォーテーションは消す。
+              econtent: entry.getChildText('content', namespaceATOM)?.replace(/(<([^>]+)>)/gi, ''),
+              eurl: entryUrl,
+              edate: entryDate
             };
             e.options = composeToot(e);
-            RSSFEED_ENTRIES.push(e);
+            rssFeedEntries.push(e);
           }
         });
         // RSS1.0
-      } else if (ROOT.getChildren('item', NAMESPACE_RSS).length > 0) {
-        RSSFEED_TITLE = ROOT.getChild('channel', NAMESPACE_RSS).getChildText('title', NAMESPACE_RSS);
-        ROOT.getChildren('item', NAMESPACE_RSS).forEach(function (entry) {
-          const ENTRY_DATE = new Date(entry.getChildText('date', NAMESPACE_DC));
-          const ENTRY_URL = entry.getChildText('link', NAMESPACE_RSS);
-          if (!isFound(STORED_ENTRY_URLS, ENTRY_URL) && Date.now() < (ENTRY_DATE.getTime() + max_millisec_age)) {
+      } else if (root.getChildren('item', namespaceRSS).length > 0) {
+        const rssFeedTitle = root.getChild('channel', namespaceRSS).getChildText('title', namespaceRSS);
+        root.getChildren('item', namespaceRSS).forEach(function (entry) {
+          const entryDate = new Date(entry.getChildText('date', namespaceDC));
+          const entryUrl = entry.getChildText('link', namespaceRSS);
+          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + max_millisec_age)) {
             let e = {
-              ftitle: RSSFEED_TITLE,
-              etitle: entry.getChildText('title', NAMESPACE_RSS).replace(/(\')/gi, ''), // シングルクォーテーションは消す。
-              econtent: entry.getChildText('description', NAMESPACE_RSS)?.replace(/(<([^>]+)>)/gi, ''),
-              eurl: ENTRY_URL,
-              edate: ENTRY_DATE
+              ftitle: rssFeedTitle,
+              etitle: entry.getChildText('title', namespaceRSS).replace(/(\')/gi, ''), // シングルクォーテーションは消す。
+              econtent: entry.getChildText('description', namespaceRSS)?.replace(/(<([^>]+)>)/gi, ''),
+              eurl: entryUrl,
+              edate: entryDate
             };
             e.options = composeToot(e);
-            RSSFEED_ENTRIES.push(e);
+            rssFeedEntries.push(e);
           }
         });
         // RSS2.0
-      } else if (ROOT.getChild('channel')?.getChildren('item').length > 0) {
-        RSSFEED_TITLE = ROOT.getChild('channel').getChildText('title');
-        ROOT.getChild('channel').getChildren('item').forEach(function (entry) {
-          const ENTRY_DATE = new Date(entry.getChildText('pubDate'));
-          const ENTRY_URL = entry.getChildText('link');
-          if (!isFound(STORED_ENTRY_URLS, ENTRY_URL) && Date.now() < (ENTRY_DATE.getTime() + max_millisec_age)) {
+      } else if (root.getChild('channel')?.getChildren('item').length > 0) {
+        const rssFeedTitle = root.getChild('channel').getChildText('title');
+        root.getChild('channel').getChildren('item').forEach(function (entry) {
+          const entryDate = new Date(entry.getChildText('pubDate'));
+          const entryUrl = entry.getChildText('link');
+          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + max_millisec_age)) {
             let e = {
-              ftitle: RSSFEED_TITLE,
+              ftitle: rssFeedTitle,
               etitle: entry.getChildText('title').replace(/(\')/gi, ''), // シングルクォーテーションは消す。
               econtent: entry.getChildText('description')?.replace(/(<([^>]+)>)/gi, ''),
-              eurl: ENTRY_URL,
-              edate: ENTRY_DATE
+              eurl: entryUrl,
+              edate: entryDate
             };
             e.options = composeToot(e);
-            RSSFEED_ENTRIES.push(e);
+            rssFeedEntries.push(e);
           }
         });
       } else {
-        Logger.log("Unknown " + RSSFEED_URL);
+        Logger.log("Unknown " + rssFeedUrl);
       }
     } else {
-      Logger.log("not value.getResponseCode() == 200 && Date.now() < (SCRIPT_START_TIME + 5 * 60 * 1000) " + RSSFEED_URL);
+      Logger.log("not value.getResponseCode() == 200 && Date.now() < (SCRIPT_START_TIME + 4 * 60 * 1000) " + rssFeedUrl);
     }
   });
-  Logger.log("RSSFEED_ENTRIES.length " + RSSFEED_ENTRIES?.length);
-  return RSSFEED_ENTRIES.sort((a, b) => a.edate - b.edate);
+  Logger.log("RSSFEED_ENTRIES.length " + rssFeedEntries?.length);
+  return rssFeedEntries.sort((a, b) => a.edate - b.edate);
 }
 
 function doToot(rssfeed_entries) {
@@ -196,52 +197,52 @@ function doToot(rssfeed_entries) {
   let ratelimit_reset_date = getScriptProperty('ratelimit_reset_date');
 
   // すでにToot済みのはこの時刻で統一
-  const TIMESTAMP = new Date().toString();
+  //const TIMESTAMP = new Date().toString();
 
   // レートリミット超えによる中断・スキップ判定用
   let ratelimit_break = false;
   let toot_count = 0;
 
   rssfeed_entries.forEach(function (value, index, array) {
-    if (!ratelimit_break && Date.now() < (SCRIPT_START_TIME + 5.8 * 60 * 1000)) {
-      if (value.options) {
-        const TRIGGER_INTERVAL = trigger_interval;// mins 
-        const RATELIMIT_WAIT_TIME = (new Date(ratelimit_reset_date).getTime() - Date.now()) / (60 * 1000);
-        const CURRENT_RATELIMIT = Math.round(ratelimit_remaining * (RATELIMIT_WAIT_TIME < TRIGGER_INTERVAL ? 1 : TRIGGER_INTERVAL / RATELIMIT_WAIT_TIME));
+    if (!ratelimit_break && Date.now() < (scriptStartTime + 5.0 * 60 * 1000)) {
+      //if (value.options) {
+      const triggerInterval = trigger_interval;// mins 
+      const ratelimitWaitTime = (new Date(ratelimit_reset_date).getTime() - Date.now()) / (60 * 1000);
+      const currentRatelimit = Math.round(ratelimit_remaining * (ratelimitWaitTime < triggerInterval ? 1 : triggerInterval / ratelimitWaitTime));
 
-        let response;
-        try {
-          let start_time = Date.now();
-          response = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), value.options);
-          let end_time = Date.now();
-          toot_count++;
-          Logger.log("info Toot():%s %s", toot_count, value.etitle);
-          let wait_time = (1 * 1000) - (end_time - start_time);
-          Utilities.sleep(wait_time < 0 ? 0 : wait_time);
-        } catch (e) {
-          logException(e, "doToot()");
-          Utilities.sleep(5 * 1000);
-          return;
-        }
-        // レートリミット情報
-        const RESPONSE_HEADERS = response.getHeaders();
-        ratelimit_remaining = Number(RESPONSE_HEADERS['x-ratelimit-remaining']);
-        ratelimit_reset_date = RESPONSE_HEADERS['x-ratelimit-reset'];
-        ratelimit_limit = Number(RESPONSE_HEADERS['x-ratelimit-limit']);
-        if (toot_count > CURRENT_RATELIMIT || response.getResponseCode() == 429) { // レートリミットを超え or 429 なら終了フラグを立てる
-          ratelimit_break = true;
-        } else if (response.getResponseCode() != 200) {
-          Utilities.sleep(5 * 1000);
-          return;
-        }
-
-        // Tootした/するはずだったRSS情報を配列に保存。後でまとめてstoreシートに書き込む
-        current_entries_array.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);
-      } else {
-        current_entries_array.push([value.etitle, value.eurl, value.econtent, TIMESTAMP]);
+      let response;
+      try {
+        let start_time = Date.now();
+        response = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), value.options);
+        let end_time = Date.now();
+        toot_count++;
+        Logger.log("info Toot():%s %s", toot_count, value.etitle);
+        let wait_time = (1 * 1000) - (end_time - start_time);
+        Utilities.sleep(wait_time < 0 ? 0 : wait_time);
+      } catch (e) {
+        logException(e, "doToot()");
+        Utilities.sleep(5 * 1000);
+        return;
       }
+      // レートリミット情報
+      const responseHeaders = response.getHeaders();
+      ratelimit_remaining = Number(responseHeaders['x-ratelimit-remaining']);
+      ratelimit_reset_date = responseHeaders['x-ratelimit-reset'];
+      ratelimit_limit = Number(responseHeaders['x-ratelimit-limit']);
+      if (toot_count > currentRatelimit || response.getResponseCode() == 429) { // レートリミットを超え or 429 なら終了フラグを立てる
+        ratelimit_break = true;
+      } else if (response.getResponseCode() != 200) {
+        Utilities.sleep(5 * 1000);
+        return;
+      }
+
+      // Tootした/するはずだったRSS情報を配列に保存。後でまとめてstoreシートに書き込む
+      current_entries_array.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);
+      /* } else {
+        current_entries_array.push([value.etitle, value.eurl, value.econtent, TIMESTAMP]);
+      }*/
     } else {
-      Logger.log("not !ratelimit_break && Date.now() < (SCRIPT_START_TIME + 5.8 * 60 * 1000) " + value.etitle);
+      Logger.log("not !ratelimit_break && Date.now() < (SCRIPT_START_TIME + 5.0 * 60 * 1000) " + value.etitle);
     }
   });
 
@@ -277,9 +278,9 @@ function composeToot(p) {
   const URL_LEN = 30;
   const MAX_TOOT_LEN = 500;
   const ICON = '\n🔳 ';
-  const DATESTRING = "(" + p.edate.toLocaleTimeString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" }) + ")";
-  m = m.length + ICON.length + DATESTRING.length + p.ftitle.length + 1 + URL_LEN < MAX_TOOT_LEN ? m : m.substring(0, MAX_TOOT_LEN - ICON.length - p.ftitle.length - DATESTRING.length - 1 - URL_LEN - SNIP.length) + SNIP;
-  m = m + ICON + p.ftitle + DATESTRING + " " + p.eurl;
+  const dateString = "(" + p.edate.toLocaleTimeString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" }) + ")";
+  m = (m.length + ICON.length + dateString.length + p.ftitle.length + 1 + URL_LEN < MAX_TOOT_LEN) ? m : (m.substring(0, MAX_TOOT_LEN - ICON.length - p.ftitle.length - dateString.length - 1 - URL_LEN - SNIP.length) + SNIP);
+  m = m + ICON + p.ftitle + dateString + " " + p.eurl;
 
   const payload = {
     status: m,
@@ -305,8 +306,7 @@ function isFound(array, data) {
 
 // urlからFQDNを取得
 function getFQDN(url) {
-  const REGEX = /https?:\/\/[a-zA-Z0-9.\-]*/;
-  return url.match(REGEX);
+  return url.match(/https?:\/\/[a-zA-Z0-9.\-]*/);
 }
 
 // シート取得（スプレッドシートObj, シート名）

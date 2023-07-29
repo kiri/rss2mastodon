@@ -21,11 +21,11 @@ function main() {
     Logger.log("End: readRSSFeeds()");
 
     Logger.log("Start: doToot()");
-    let toot_entries_array = doToot(rssfeeds);
+    let tootEntriesArray = doToot(rssfeeds);
     Logger.log("End: doToot()");
 
     Logger.log("Start: saveEntries()");
-    saveEntries(toot_entries_array);
+    saveEntries(tootEntriesArray);
     Logger.log("End: saveEntries()");
   } catch (e) {
     logException(e, "main()");
@@ -41,11 +41,11 @@ function saveEntries(array) {
     const storedEntries = getSheetValues(storedEntriesSheet, 2, 1, 4); // タイトル、URL、コンテンツ、時刻を取得（A2(2,1)を起点に最終データ行までの4列分）
 
     // 最新のRSSとキャッシュを統合してシートを更新。古いキャッシュは捨てる。
-    let max_millisec_age = Number(getScriptProperty('store_max_age')) * 60 * 1000;
-    let merged_entries_array = array.concat(storedEntries.filter(function (item) { return Date.now() < (new Date(item[3]).getTime() + max_millisec_age); }));
+    let maxMillisecTime = Number(getScriptProperty('store_max_time')) * 60 * 1000;
+    let mergedEntriesArray = array.concat(storedEntries.filter(function (item) { return Date.now() < (new Date(item[3]).getTime() + maxMillisecTime); }));
     storedEntriesSheet.clear();
-    if (merged_entries_array?.length > 0) {
-      storedEntriesSheet.getRange(2, 1, merged_entries_array.length, 4).setValues(merged_entries_array.sort((a, b) => new Date(b[3]).getTime() - new Date(a[3]).getTime())).removeDuplicates([2]);
+    if (mergedEntriesArray?.length > 0) {
+      storedEntriesSheet.getRange(2, 1, mergedEntriesArray.length, 4).setValues(mergedEntriesArray.sort((a, b) => new Date(b[3]).getTime() - new Date(a[3]).getTime())).removeDuplicates([2]);
     }
     SpreadsheetApp.flush();
   }
@@ -61,23 +61,23 @@ function readRSSFeeds() {
   }
   Logger.log(rssFeeds);
 
-  let rssfeed_urls_list = [];
+  let rssfeedUrlList = [];
   {
-    let temp_rssfeed_urls_list = [];
+    let tempRssfeedUrlList = [];
     rssFeeds.forEach(function (value, index, array) {
-      temp_rssfeed_urls_list.push(value);
+      tempRssfeedUrlList.push(value);
       if ((index + 1) % 10 == 0) {
-        rssfeed_urls_list.push(temp_rssfeed_urls_list);
-        temp_rssfeed_urls_list = [];
+        rssfeedUrlList.push(tempRssfeedUrlList);
+        tempRssfeedUrlList = [];
       }
     });
-    rssfeed_urls_list.push(temp_rssfeed_urls_list);
-    temp_rssfeed_urls_list = [];
+    rssfeedUrlList.push(tempRssfeedUrlList);
+    tempRssfeedUrlList = [];
   }
 
   let responses = [];
   try {
-    rssfeed_urls_list.forEach(function (value, index, array) {
+    rssfeedUrlList.forEach(function (value, index, array) {
       Logger.log("rssfeed_urls_list index=" + index);
       if (Date.now() < (scriptStartTime + 2 * 60 * 1000)) {// 開始から2分までは実行可
         let requests = [];
@@ -108,7 +108,7 @@ function readRSSFeeds() {
   const storedEntryUrls = getSheetValues(storedEntriesSheet, 2, 2, 1); // URLのみ取得（B2(2:2,B:2)を起点に最終データ行までの1列分) 
 
   // 記事の期限
-  let maxMillisecAge = Number(getScriptProperty('article_max_age')) * 60 * 1000;
+  let maxMillisecTime = Number(getScriptProperty('article_max_time')) * 60 * 1000;
   let mastodonAccessToken = getScriptProperty('mastodon_accesstoken');
 
   // 返り値のRSSフィードのリスト
@@ -125,7 +125,7 @@ function readRSSFeeds() {
         root.getChildren('entry', namespaceATOM).forEach(function (entry) {
           const entryDate = new Date(entry.getChildText('updated', namespaceATOM));
           const entryUrl = entry.getChild('link', namespaceATOM).getAttribute('href').getValue();
-          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + maxMillisecAge)) {
+          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + maxMillisecTime)) {
             let e = {
               ftitle: rssFeedTitle,
               etitle: entry.getChildText('title', namespaceATOM).replace(/(\')/gi, ''), // シングルクォーテーションは消す。
@@ -144,7 +144,7 @@ function readRSSFeeds() {
         root.getChildren('item', namespaceRSS).forEach(function (entry) {
           const entryDate = new Date(entry.getChildText('date', namespaceDC));
           const entryUrl = entry.getChildText('link', namespaceRSS);
-          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + maxMillisecAge)) {
+          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + maxMillisecTime)) {
             let e = {
               ftitle: rssFeedTitle,
               etitle: entry.getChildText('title', namespaceRSS).replace(/(\')/gi, ''), // シングルクォーテーションは消す。
@@ -163,7 +163,7 @@ function readRSSFeeds() {
         root.getChild('channel').getChildren('item').forEach(function (entry) {
           const entryDate = new Date(entry.getChildText('pubDate'));
           const entryUrl = entry.getChildText('link');
-          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + maxMillisecAge)) {
+          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + maxMillisecTime)) {
             let e = {
               ftitle: rssFeedTitle,
               etitle: entry.getChildText('title').replace(/(\')/gi, ''), // シングルクォーテーションは消す。
@@ -345,10 +345,10 @@ function shuffleArray(array) {
 
 // スクリプトプロパティがなかったとき用の初期設定
 function initScriptProperty() {
-  if (!getScriptProperty('trigger_interval') || !getScriptProperty('store_max_age') || !getScriptProperty('article_max_age') || !getScriptProperty('ratelimit_remaining') || !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
+  if (!getScriptProperty('trigger_interval') || !getScriptProperty('store_max_time') || !getScriptProperty('article_max_time') || !getScriptProperty('ratelimit_remaining') || !getScriptProperty('ratelimit_reset_date') || !getScriptProperty('ratelimit_limit')) {
     setScriptProperty('trigger_interval', 10); // minuites 
-    setScriptProperty('store_max_age', 720); // minuites
-    setScriptProperty('article_max_age', 120); // minuites
+    setScriptProperty('store_max_time', 720); // minuites
+    setScriptProperty('article_max_time', 120); // minuites
     setScriptProperty('ratelimit_reset_date', Date.now() + 3 * 60 * 60 * 1000);// miliseconds
     setScriptProperty('ratelimit_remaining', 300);
     setScriptProperty('ratelimit_limit', 300);

@@ -91,11 +91,11 @@ function readRSSFeeds() {
           requests.push(param);
         }
 
-        let start_time = Date.now();
+        let startTime = Date.now();
         responses = responses.concat(UrlFetchApp.fetchAll(requests));
-        let end_time = Date.now();
-        let wait_time = (value.length * 1000) - (end_time - start_time);
-        Utilities.sleep(wait_time < 0 ? 0 : wait_time);
+        let endTime = Date.now();
+        let waitTime = (value.length * 1000) - (endTime - startTime);
+        Utilities.sleep(waitTime < 0 ? 0 : waitTime);
       }
     });
   } catch (e) {
@@ -108,13 +108,14 @@ function readRSSFeeds() {
   const storedEntryUrls = getSheetValues(storedEntriesSheet, 2, 2, 1); // URLのみ取得（B2(2:2,B:2)を起点に最終データ行までの1列分) 
 
   // 記事の期限
-  let max_millisec_age = Number(getScriptProperty('article_max_age')) * 60 * 1000;
+  let maxMillisecAge = Number(getScriptProperty('article_max_age')) * 60 * 1000;
+  let mastodonAccessToken = getScriptProperty('mastodon_accesstoken');
 
   // 返り値のRSSフィードのリスト
   const rssFeedEntries = [];
   responses.forEach(function (value, index, array) {
     const rssFeedUrl = rssFeeds[index][0];
-    if (value.getResponseCode() == 200 && Date.now() < (scriptStartTime + 4 * 60 * 1000)) {
+    if (value.getResponseCode() == 200 && Date.now() < (scriptStartTime + 4 * 60 * 1000)) {// 開始から4分までは実行可
       const xml = XmlService.parse(value.getContentText());
       const root = xml.getRootElement();
 
@@ -124,13 +125,14 @@ function readRSSFeeds() {
         root.getChildren('entry', namespaceATOM).forEach(function (entry) {
           const entryDate = new Date(entry.getChildText('updated', namespaceATOM));
           const entryUrl = entry.getChild('link', namespaceATOM).getAttribute('href').getValue();
-          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + max_millisec_age)) {
+          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + maxMillisecAge)) {
             let e = {
               ftitle: rssFeedTitle,
               etitle: entry.getChildText('title', namespaceATOM).replace(/(\')/gi, ''), // シングルクォーテーションは消す。
               econtent: entry.getChildText('content', namespaceATOM)?.replace(/(<([^>]+)>)/gi, ''),
               eurl: entryUrl,
-              edate: entryDate
+              edate: entryDate,
+              token: mastodonAccessToken
             };
             e.options = composeToot(e);
             rssFeedEntries.push(e);
@@ -142,13 +144,14 @@ function readRSSFeeds() {
         root.getChildren('item', namespaceRSS).forEach(function (entry) {
           const entryDate = new Date(entry.getChildText('date', namespaceDC));
           const entryUrl = entry.getChildText('link', namespaceRSS);
-          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + max_millisec_age)) {
+          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + maxMillisecAge)) {
             let e = {
               ftitle: rssFeedTitle,
               etitle: entry.getChildText('title', namespaceRSS).replace(/(\')/gi, ''), // シングルクォーテーションは消す。
               econtent: entry.getChildText('description', namespaceRSS)?.replace(/(<([^>]+)>)/gi, ''),
               eurl: entryUrl,
-              edate: entryDate
+              edate: entryDate,
+              token: mastodonAccessToken
             };
             e.options = composeToot(e);
             rssFeedEntries.push(e);
@@ -160,13 +163,14 @@ function readRSSFeeds() {
         root.getChild('channel').getChildren('item').forEach(function (entry) {
           const entryDate = new Date(entry.getChildText('pubDate'));
           const entryUrl = entry.getChildText('link');
-          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + max_millisec_age)) {
+          if (!isFound(storedEntryUrls, entryUrl) && Date.now() < (entryDate.getTime() + maxMillisecAge)) {
             let e = {
               ftitle: rssFeedTitle,
               etitle: entry.getChildText('title').replace(/(\')/gi, ''), // シングルクォーテーションは消す。
               econtent: entry.getChildText('description')?.replace(/(<([^>]+)>)/gi, ''),
               eurl: entryUrl,
-              edate: entryDate
+              edate: entryDate,
+              token: mastodonAccessToken
             };
             e.options = composeToot(e);
             rssFeedEntries.push(e);
@@ -185,40 +189,40 @@ function readRSSFeeds() {
 
 function doToot(rssfeed_entries) {
   // Tootした後のRSS情報を記録する配列
-  const current_entries_array = [];
+  const currentEntriesArray = [];
 
   // スクリプトプロパティを取得
-  let ratelimit_remaining = Number(getScriptProperty('ratelimit_remaining'));
-  if (ratelimit_remaining <= 0) {
+  let ratelimitRemaining = Number(getScriptProperty('ratelimit_remaining'));
+  if (ratelimitRemaining <= 0) {
     return;
   }
-  let ratelimit_limit = Number(getScriptProperty('ratelimit_limit'));
-  let trigger_interval = Number(getScriptProperty('trigger_interval'));
-  let ratelimit_reset_date = getScriptProperty('ratelimit_reset_date');
+  let ratelimitLimit = Number(getScriptProperty('ratelimit_limit'));
+  let triggerInterval = Number(getScriptProperty('trigger_interval'));
+  let ratelimitResetDate = getScriptProperty('ratelimit_reset_date');
 
   // すでにToot済みのはこの時刻で統一
   //const TIMESTAMP = new Date().toString();
 
   // レートリミット超えによる中断・スキップ判定用
-  let ratelimit_break = false;
-  let toot_count = 0;
+  let ratelimitBreak = false;
+  let tootCount = 0;
 
   rssfeed_entries.forEach(function (value, index, array) {
-    if (!ratelimit_break && Date.now() < (scriptStartTime + 5.0 * 60 * 1000)) {
+    if (!ratelimitBreak && Date.now() < (scriptStartTime + 5.0 * 60 * 1000)) {// 開始から5分までは実行可
       //if (value.options) {
-      const triggerInterval = trigger_interval;// mins 
-      const ratelimitWaitTime = (new Date(ratelimit_reset_date).getTime() - Date.now()) / (60 * 1000);
-      const currentRatelimit = Math.round(ratelimit_remaining * (ratelimitWaitTime < triggerInterval ? 1 : triggerInterval / ratelimitWaitTime));
+      //const triggerInterval = trigger_interval;// mins 
+      const ratelimitWaitTime = (new Date(ratelimitResetDate).getTime() - Date.now()) / (60 * 1000);
+      const currentRatelimit = Math.round(ratelimitRemaining * (ratelimitWaitTime < triggerInterval ? 1 : triggerInterval / ratelimitWaitTime));
 
       let response;
       try {
-        let start_time = Date.now();
+        let startTime = Date.now();
         response = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), value.options);
-        let end_time = Date.now();
-        toot_count++;
-        Logger.log("info Toot():%s %s", toot_count, value.etitle);
-        let wait_time = (1 * 1000) - (end_time - start_time);
-        Utilities.sleep(wait_time < 0 ? 0 : wait_time);
+        let endTime = Date.now();
+        tootCount++;
+        Logger.log("info Toot():%s %s", tootCount, value.etitle);
+        let waitTime = (1 * 1000) - (endTime - startTime);
+        Utilities.sleep(waitTime < 0 ? 0 : waitTime);
       } catch (e) {
         logException(e, "doToot()");
         Utilities.sleep(5 * 1000);
@@ -226,18 +230,18 @@ function doToot(rssfeed_entries) {
       }
       // レートリミット情報
       const responseHeaders = response.getHeaders();
-      ratelimit_remaining = Number(responseHeaders['x-ratelimit-remaining']);
-      ratelimit_reset_date = responseHeaders['x-ratelimit-reset'];
-      ratelimit_limit = Number(responseHeaders['x-ratelimit-limit']);
-      if (toot_count > currentRatelimit || response.getResponseCode() == 429) { // レートリミットを超え or 429 なら終了フラグを立てる
-        ratelimit_break = true;
+      ratelimitRemaining = Number(responseHeaders['x-ratelimit-remaining']);
+      ratelimitResetDate = responseHeaders['x-ratelimit-reset'];
+      ratelimitLimit = Number(responseHeaders['x-ratelimit-limit']);
+      if (tootCount > currentRatelimit || response.getResponseCode() == 429) { // レートリミットを超え or 429 なら終了フラグを立てる
+        ratelimitBreak = true;
       } else if (response.getResponseCode() != 200) {
         Utilities.sleep(5 * 1000);
         return;
       }
 
       // Tootした/するはずだったRSS情報を配列に保存。後でまとめてstoreシートに書き込む
-      current_entries_array.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);
+      currentEntriesArray.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);
       /* } else {
         current_entries_array.push([value.etitle, value.eurl, value.econtent, TIMESTAMP]);
       }*/
@@ -247,24 +251,23 @@ function doToot(rssfeed_entries) {
   });
 
   // レートリミット情報をプロパティに保存
-  setScriptProperty('ratelimit_reset_date', ratelimit_reset_date);
-  setScriptProperty('ratelimit_remaining', ratelimit_remaining);
-  setScriptProperty('ratelimit_limit', ratelimit_limit);
+  setScriptProperty('ratelimit_reset_date', ratelimitResetDate);
+  setScriptProperty('ratelimit_remaining', ratelimitRemaining);
+  setScriptProperty('ratelimit_limit', ratelimitLimit);
 
-  Logger.log("setScriptProperty %s %s %s", ratelimit_reset_date, ratelimit_remaining, ratelimit_limit);
+  Logger.log("setScriptProperty %s %s %s", ratelimitResetDate, ratelimitRemaining, ratelimitLimit);
 
-  return current_entries_array;
+  return currentEntriesArray;
 }
 
-function composeToot(p) {
-  let m = "";
-  m = '📰 ' + p.etitle + '\n' + p.econtent + '\n';
+function composeToot(data) {
+  let text = '📰 ' + data.etitle + '\n' + data.econtent + '\n';
 
   //if (p.econtent && !p.econtent.split('').some(char => char.charCodeAt() > 255)) {
-  if (!p.etitle?.split('').some(char => char.charCodeAt() > 255 && !(char.charCodeAt() >= 8215 && char.charCodeAt() <= 8223))) { //‘とか’とかは除外
+  if (!data.etitle?.split('').some(char => char.charCodeAt() > 255 && !(char.charCodeAt() >= 8215 && char.charCodeAt() <= 8223))) { //‘とか’とかは除外
     let start_time = Date.now();
     try {
-      m = m + '\n📝 ' + LanguageApp.translate(p.etitle + "\n" + p.econtent, '', 'ja') + '\n';
+      text = text + '\n📝 ' + LanguageApp.translate(data.etitle + "\n" + data.econtent, '', 'ja') + '\n';
       //m = m + '\n📝 ' + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, '', 'ja') + '\n';
     } catch (e) {
       logException(e, '')
@@ -278,18 +281,18 @@ function composeToot(p) {
   const URL_LEN = 30;
   const MAX_TOOT_LEN = 500;
   const ICON = '\n🔳 ';
-  const dateString = "(" + p.edate.toLocaleTimeString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" }) + ")";
-  m = (m.length + ICON.length + dateString.length + p.ftitle.length + 1 + URL_LEN < MAX_TOOT_LEN) ? m : (m.substring(0, MAX_TOOT_LEN - ICON.length - p.ftitle.length - dateString.length - 1 - URL_LEN - SNIP.length) + SNIP);
-  m = m + ICON + p.ftitle + dateString + " " + p.eurl;
+  const dateString = "(" + data.edate.toLocaleTimeString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" }) + ")";
+  text = ((text.length + ICON.length + dateString.length + data.ftitle.length + 1 + URL_LEN) < MAX_TOOT_LEN) ? text : (text.substring(0, MAX_TOOT_LEN - ICON.length - data.ftitle.length - dateString.length - 1 - URL_LEN - SNIP.length) + SNIP);
+  text = text + ICON + data.ftitle + dateString + " " + data.eurl;
 
   const payload = {
-    status: m,
+    status: text,
     visibility: 'private'
   };
   const options = {
     method: 'post',
     payload: JSON.stringify(payload),
-    headers: { Authorization: 'Bearer ' + getScriptProperty('mastodon_accesstoken') },
+    headers: { Authorization: 'Bearer ' + data.token },
     contentType: 'application/json',
     muteHttpExceptions: true
   };

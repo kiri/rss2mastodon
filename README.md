@@ -1,1 +1,1 @@
-# tootrss-fetchall
+# post rssfeed to mastodon

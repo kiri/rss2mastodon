@@ -1,5 +1,5 @@
 /*
- RSSをmastodonへtoot
+ RSSをmastodonへPost
 */
 const namespaceRSS = XmlService.getNamespace('http://purl.org/rss/1.0/');
 const namespaceDC = XmlService.getNamespace("http://purl.org/dc/elements/1.1/");
@@ -16,17 +16,9 @@ function main() {
   const lock = LockService.getDocumentLock();
   try {
     lock.waitLock(0);
-    Logger.log("Start: readRSSFeeds()");
     let rssfeeds = readRSSFeeds();
-    Logger.log("End: readRSSFeeds()");
-
-    Logger.log("Start: doToot()");
-    let tootEntriesArray = doToot(rssfeeds);
-    Logger.log("End: doToot()");
-
-    Logger.log("Start: saveEntries()");
-    saveEntries(tootEntriesArray);
-    Logger.log("End: saveEntries()");
+    let postEntriesArray = doPost(rssfeeds);
+    saveEntries(postEntriesArray);
   } catch (e) {
     logException(e, "main()");
   } finally {
@@ -134,7 +126,7 @@ function readRSSFeeds() {
               edate: entryDate,
               token: mastodonAccessToken
             };
-            e.options = composeToot(e);
+            e.options = composeMessage(e);
             rssFeedEntries.push(e);
           }
         });
@@ -153,7 +145,7 @@ function readRSSFeeds() {
               edate: entryDate,
               token: mastodonAccessToken
             };
-            e.options = composeToot(e);
+            e.options = composeMessage(e);
             rssFeedEntries.push(e);
           }
         });
@@ -172,7 +164,7 @@ function readRSSFeeds() {
               edate: entryDate,
               token: mastodonAccessToken
             };
-            e.options = composeToot(e);
+            e.options = composeMessage(e);
             rssFeedEntries.push(e);
           }
         });
@@ -187,8 +179,8 @@ function readRSSFeeds() {
   return rssFeedEntries.sort((a, b) => a.edate - b.edate);
 }
 
-function doToot(rssfeed_entries) {
-  // Tootした後のRSS情報を記録する配列
+function doPost(rssfeedEntries) {
+  // Postした後のRSS情報を記録する配列
   const currentEntriesArray = [];
 
   // スクリプトプロパティを取得
@@ -200,17 +192,12 @@ function doToot(rssfeed_entries) {
   let triggerInterval = Number(getScriptProperty('trigger_interval'));
   let ratelimitResetDate = getScriptProperty('ratelimit_reset_date');
 
-  // すでにToot済みのはこの時刻で統一
-  //const TIMESTAMP = new Date().toString();
-
   // レートリミット超えによる中断・スキップ判定用
   let ratelimitBreak = false;
-  let tootCount = 0;
+  let postCount = 0;
 
-  rssfeed_entries.forEach(function (value, index, array) {
+  rssfeedEntries.forEach(function (value, index, array) {
     if (!ratelimitBreak && Date.now() < (scriptStartTime + 5.0 * 60 * 1000)) {// 開始から5分までは実行可
-      //if (value.options) {
-      //const triggerInterval = trigger_interval;// mins 
       const ratelimitWaitTime = (new Date(ratelimitResetDate).getTime() - Date.now()) / (60 * 1000);
       const currentRatelimit = Math.round(ratelimitRemaining * (ratelimitWaitTime < triggerInterval ? 1 : triggerInterval / ratelimitWaitTime));
 
@@ -219,12 +206,12 @@ function doToot(rssfeed_entries) {
         let startTime = Date.now();
         response = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), value.options);
         let endTime = Date.now();
-        tootCount++;
-        Logger.log("info Toot():%s %s", tootCount, value.etitle);
+        postCount++;
+        Logger.log("info Post():%s %s", postCount, value.etitle);
         let waitTime = (1 * 1000) - (endTime - startTime);
         Utilities.sleep(waitTime < 0 ? 0 : waitTime);
       } catch (e) {
-        logException(e, "doToot()");
+        logException(e, "doPost()");
         Utilities.sleep(5 * 1000);
         return;
       }
@@ -233,18 +220,15 @@ function doToot(rssfeed_entries) {
       ratelimitRemaining = Number(responseHeaders['x-ratelimit-remaining']);
       ratelimitResetDate = responseHeaders['x-ratelimit-reset'];
       ratelimitLimit = Number(responseHeaders['x-ratelimit-limit']);
-      if (tootCount > currentRatelimit || response.getResponseCode() == 429) { // レートリミットを超え or 429 なら終了フラグを立てる
+      if (postCount > currentRatelimit || response.getResponseCode() == 429) { // レートリミットを超え or 429 なら終了フラグを立てる
         ratelimitBreak = true;
       } else if (response.getResponseCode() != 200) {
         Utilities.sleep(5 * 1000);
         return;
       }
 
-      // Tootした/するはずだったRSS情報を配列に保存。後でまとめてstoreシートに書き込む
+      // Postした/するはずだったRSS情報を配列に保存。後でまとめてstoreシートに書き込む
       currentEntriesArray.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);
-      /* } else {
-        current_entries_array.push([value.etitle, value.eurl, value.econtent, TIMESTAMP]);
-      }*/
     } else {
       Logger.log("not !ratelimit_break && Date.now() < (SCRIPT_START_TIME + 5.0 * 60 * 1000) " + value.etitle);
     }
@@ -260,29 +244,27 @@ function doToot(rssfeed_entries) {
   return currentEntriesArray;
 }
 
-function composeToot(data) {
+function composeMessage(data) {
   let text = '📰 ' + data.etitle + '\n' + data.econtent + '\n';
 
-  //if (p.econtent && !p.econtent.split('').some(char => char.charCodeAt() > 255)) {
   if (!data.etitle?.split('').some(char => char.charCodeAt() > 255 && !(char.charCodeAt() >= 8215 && char.charCodeAt() <= 8223))) { //‘とか’とかは除外
-    let start_time = Date.now();
+    let startTime = Date.now();
     try {
       text = text + '\n📝 ' + LanguageApp.translate(data.etitle + "\n" + data.econtent, '', 'ja') + '\n';
-      //m = m + '\n📝 ' + LanguageApp.translate(p.econtent ? p.econtent : p.etitle, '', 'ja') + '\n';
     } catch (e) {
       logException(e, '')
     }
-    let end_time = Date.now();
-    let wait_time = (1 * 1000) - (end_time - start_time);
-    Utilities.sleep(wait_time < 0 ? 0 : wait_time);
+    let endTime = Date.now();
+    let waitTime = (1 * 1000) - (endTime - startTime);
+    Utilities.sleep(waitTime < 0 ? 0 : waitTime);
   }
 
   const SNIP = '✂\n';
   const URL_LEN = 30;
-  const MAX_TOOT_LEN = 500;
+  const MAX_TEXT_LEN = 500;
   const ICON = '\n🔳 ';
   const dateString = "(" + data.edate.toLocaleTimeString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" }) + ")";
-  text = ((text.length + ICON.length + dateString.length + data.ftitle.length + 1 + URL_LEN) < MAX_TOOT_LEN) ? text : (text.substring(0, MAX_TOOT_LEN - ICON.length - data.ftitle.length - dateString.length - 1 - URL_LEN - SNIP.length) + SNIP);
+  text = ((text.length + ICON.length + dateString.length + data.ftitle.length + 1 + URL_LEN) < MAX_TEXT_LEN) ? text : (text.substring(0, MAX_TEXT_LEN - ICON.length - data.ftitle.length - dateString.length - 1 - URL_LEN - SNIP.length) + SNIP);
   text = text + ICON + data.ftitle + dateString + " " + data.eurl;
 
   const payload = {
@@ -291,9 +273,9 @@ function composeToot(data) {
   };
   const options = {
     method: 'post',
-    payload: JSON.stringify(payload),
     headers: { Authorization: 'Bearer ' + data.token },
     contentType: 'application/json',
+    payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };
   return options;

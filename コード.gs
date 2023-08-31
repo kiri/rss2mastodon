@@ -108,7 +108,13 @@ function readRSSFeeds() {
   responses.forEach(function (value, index, array) {
     const rssFeedUrl = rssFeeds[index][0];
     if (value.getResponseCode() == 200 && Date.now() < (scriptStartTime + 4 * 60 * 1000)) {// 開始から4分までは実行可
-      const xml = XmlService.parse(value.getContentText());
+      let xml;
+      try {
+        xml = XmlService.parse(value.getContentText());
+      } catch (e) {
+        logException(e, "readRSSFeeds()>responses.forEach");
+        return;
+      }
       const root = xml.getRootElement();
 
       // ATOM
@@ -201,32 +207,34 @@ function doPost(rssfeedEntries) {
       const ratelimitWaitTime = (new Date(ratelimitResetDate).getTime() - Date.now()) / (60 * 1000);
       const currentRatelimit = Math.round(ratelimitRemaining * (ratelimitWaitTime < triggerInterval ? 1 : triggerInterval / ratelimitWaitTime));
 
-      let response;
-      try {
-        let startTime = Date.now();
-        response = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), value.options);
-        let endTime = Date.now();
-        postCount++;
-        Logger.log("info Post():%s %s", postCount, value.etitle);
-        let waitTime = (1 * 1000) - (endTime - startTime);
-        Utilities.sleep(waitTime < 0 ? 0 : waitTime);
-      } catch (e) {
-        logException(e, "doPost()");
-        Utilities.sleep(5 * 1000);
-        return;
-      }
-      // レートリミット情報
-      const responseHeaders = response.getHeaders();
-      ratelimitRemaining = Number(responseHeaders['x-ratelimit-remaining']);
-      ratelimitResetDate = responseHeaders['x-ratelimit-reset'];
-      ratelimitLimit = Number(responseHeaders['x-ratelimit-limit']);
-      if (postCount > currentRatelimit || response.getResponseCode() == 429) { // レートリミットを超え or 429 なら終了フラグを立てる
-        ratelimitBreak = true;
-      } else if (response.getResponseCode() != 200) {
-        Utilities.sleep(5 * 1000);
-        return;
-      }
+      if (!currentEntriesArray.some(cv => cv.eurl == value.eurl)) { // currentEntriesArrayにすでに含まれていたら実行しない
+        let response;
+        try {
+          let startTime = Date.now();
+          response = UrlFetchApp.fetch(getScriptProperty('mastodon_url'), value.options);
+          let endTime = Date.now();
+          postCount++;
+          Logger.log("info Post():%s %s", postCount, value.etitle);
+          let waitTime = (1 * 1000) - (endTime - startTime);
+          Utilities.sleep(waitTime < 0 ? 0 : waitTime);
+        } catch (e) {
+          logException(e, "doPost()");
+          Utilities.sleep(5 * 1000);
+          return;
+        }
 
+        // レートリミット情報
+        const responseHeaders = response.getHeaders();
+        ratelimitRemaining = Number(responseHeaders['x-ratelimit-remaining']);
+        ratelimitResetDate = responseHeaders['x-ratelimit-reset'];
+        ratelimitLimit = Number(responseHeaders['x-ratelimit-limit']);
+        if (postCount > currentRatelimit || response.getResponseCode() == 429) { // レートリミットを超え or 429 なら終了フラグを立てる
+          ratelimitBreak = true;
+        } else if (response.getResponseCode() != 200) {
+          Utilities.sleep(5 * 1000);
+          return;
+        }
+      }
       // Postした/するはずだったRSS情報を配列に保存。後でまとめてstoreシートに書き込む
       currentEntriesArray.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);
     } else {

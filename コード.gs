@@ -111,7 +111,7 @@ function readRSSFeeds() {
       let xml;
       try {
         xml = XmlService.parse(value.getContentText());
-      } catch (e) {
+      } catch (e) { // parseで失敗することがある、よくわからないが、スキップする。
         logException(e, "readRSSFeeds()>responses.forEach");
         return;
       }

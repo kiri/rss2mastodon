@@ -207,7 +207,7 @@ function doPost(rssfeedEntries) {
       const ratelimitWaitTime = (new Date(ratelimitResetDate).getTime() - Date.now()) / (60 * 1000);
       const currentRatelimit = Math.round(ratelimitRemaining * (ratelimitWaitTime < triggerInterval ? 1 : triggerInterval / ratelimitWaitTime));
 
-      if (!currentEntriesArray.some(cv => cv.eurl == value.eurl)) { // currentEntriesArrayにすでに含まれていたら実行しない
+      if (!currentEntriesArray.some(cv => cv[1] == value.eurl)) { // currentEntriesArrayにすでに含まれていたら実行しない
         let response;
         try {
           let startTime = Date.now();
@@ -234,6 +234,8 @@ function doPost(rssfeedEntries) {
           Utilities.sleep(5 * 1000);
           return;
         }
+      } else {
+        Logger.log("skip " + value.etitle);
       }
       // Postした/するはずだったRSS情報を配列に保存。後でまとめてstoreシートに書き込む
       currentEntriesArray.push([value.etitle, value.eurl, value.econtent, new Date().toString()]);

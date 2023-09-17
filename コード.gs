@@ -255,7 +255,7 @@ function doPost(rssfeedEntries) {
 }
 
 function composeMessage(data) {
-  let text = '📰 ' + data.etitle + '\n' + data.econtent + '\n';
+  let text = '【' + data.etitle + '】\n\n' + data.econtent + '\n';
 
   if (!data.etitle?.split('').some(char => char.charCodeAt() > 255 && !(char.charCodeAt() >= 8215 && char.charCodeAt() <= 8223))) { //‘とか’とかは除外
     let startTime = Date.now();
@@ -272,7 +272,7 @@ function composeMessage(data) {
   const SNIP = '✂\n';
   const URL_LEN = 30;
   const MAX_TEXT_LEN = 500;
-  const ICON = '\n🔳 ';
+  const ICON = '\n🔗 ';
   const dateString = "(" + data.edate.toLocaleTimeString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" }) + ")";
   text = ((text.length + ICON.length + dateString.length + data.ftitle.length + 1 + URL_LEN) < MAX_TEXT_LEN) ? text : (text.substring(0, MAX_TEXT_LEN - ICON.length - data.ftitle.length - dateString.length - 1 - URL_LEN - SNIP.length) + SNIP);
   text = text + ICON + data.ftitle + dateString + " " + data.eurl;
